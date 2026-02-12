@@ -333,6 +333,19 @@ const Results = {
       // Step 5: Transfer costs via Google Directions (now with actual hotel coords + bidirectional)
       Components.updateLoadingStep(5, 'active');
       this.plan = this.buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, hotelOffers, mealCostResults, layoverMealResult);
+
+      // Re-fetch flights for legs whose dates changed after arrival-date correction
+      const legsToRefetch = [];
+      this.plan.flightLegs.forEach((leg, i) => {
+        if (leg.legType === 'flight' && leg.searchedDate && leg.date !== leg.searchedDate) {
+          legsToRefetch.push(i);
+        }
+      });
+      if (legsToRefetch.length > 0) {
+        await this.refetchFlights(legsToRefetch);
+        this._computeArrivalDates(this.plan.flightLegs, this.plan.cities);
+      }
+
       this.plan.transfers = await this.estimateTransfers(this.plan, iataResults);
       Components.updateLoadingStep(5, 'done');
 
@@ -444,7 +457,9 @@ const Results = {
         });
       }
 
-      currentDate = Utils.addDays(currentDate, 1);
+      // Advance date: 1 day for travel + nights at this destination (default 1 night)
+      const cityNights = tripData.destinations[i].nights ?? 1;
+      currentDate = Utils.addDays(currentDate, 1 + cityNights);
     }
 
     // Return leg: from last airport to origin
@@ -514,7 +529,7 @@ const Results = {
         airportName: iata.airportName,
         country: iata.country,
         hasAirport: iata.hasAirport !== false,
-        nights: 1,
+        nights: dest.nights || 1,
         hotelType: 'comfort',
         hotelBasePrice,
         hotelPriceSource,
@@ -573,6 +588,9 @@ const Results = {
         selectedOffer: enrichedFlights[0] || null,
       };
     });
+
+    // Save original search dates before arrival-based corrections
+    enrichedFlightLegs.forEach(leg => { leg.searchedDate = leg.date; });
 
     // Compute arrival-based dates: walk through legs and set checkInDate on cities
     this._computeArrivalDates(enrichedFlightLegs, cities);
@@ -848,18 +866,26 @@ const Results = {
 
     // Build a map: which leg index leads to which city
     // legType 'skip' for a city means direct drive (no airport needed)
+    // BUT if a real flight preceded the skip (e.g. AMS→IDR flight then IDR skip for Ratlam),
+    // the city should use normal airport-to-hotel transfers, not direct drive
     const skipCity = [];
     let legIdx = 0;
     for (let i = 0; i < plan.cities.length; i++) {
       let cityIsSkip = false;
+      let hadRealFlightBefore = false;
       while (legIdx < flightLegs.length - 1) {
         const leg = flightLegs[legIdx];
         const matchName = leg.toCityName || leg.toName;
-        if (leg.legType === 'skip') cityIsSkip = true;
+        if (leg.legType === 'skip') {
+          cityIsSkip = true;
+        } else if (leg.legType === 'flight' || leg.legType === 'train') {
+          hadRealFlightBefore = true;
+        }
         legIdx++;
         if (matchName === plan.cities[i].name) break;
       }
-      skipCity.push(cityIsSkip);
+      // Only a pure skip (direct drive) if there was NO real flight to get to the shared airport
+      skipCity.push(cityIsSkip && !hadRealFlightBefore);
     }
 
     // For each destination city: build arrival + departure transfers
