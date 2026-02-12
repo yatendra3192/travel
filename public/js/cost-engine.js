@@ -89,6 +89,22 @@ const CostEngine = {
   calcFlights(plan) {
     let low = 0, high = 0;
     for (const leg of plan.flightLegs) {
+      // Ground transport mode (user switched from flight)
+      if (leg.selectedMode && leg.selectedMode !== 'flight' && leg.groundRoutes) {
+        const totalPassengers = plan.adults + plan.children;
+        if (leg.selectedMode === 'transit') {
+          const cost = leg.groundRoutes.transitRoutes?.[0]?.publicTransportCost || 0;
+          low += cost * totalPassengers;
+          high += cost * 1.3 * totalPassengers;
+        } else if (leg.selectedMode === 'drive') {
+          const cost = leg.groundRoutes.driving?.taxiCost || 0;
+          low += cost; // taxi cost is total, not per person
+          high += cost * 1.2;
+        }
+        // walk/bike = free
+        continue;
+      }
+
       // Train/bus legs have fixed cost, not flight offers
       if (leg.legType === 'train' && leg.transitInfo) {
         const trainCost = leg.transitInfo.estimatedCostEur || 15;

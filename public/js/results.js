@@ -278,8 +278,60 @@ const Results = {
         })
       );
 
-      // Wait for both
-      const [flightResults, hotelResults] = await Promise.all([flightSearchPromise, hotelSearchPromise]);
+      // Fetch city-to-city ground routes for each flight leg (parallel with flights/hotels)
+      // Walk legs and track previous city to build proper from/to coordinates
+      // (legs don't map 1:1 to destinations — no-airport cities produce flight + train)
+      {
+        let prevCityLat = iataResults[0].cityCenterLat || tripData.from?.lat;
+        let prevCityLng = iataResults[0].cityCenterLng || tripData.from?.lng;
+        let cityIdx = 0;
+        for (let li = 0; li < flightLegs.length; li++) {
+          const leg = flightLegs[li];
+          // Store from/to coords on leg for ground route fetch
+          leg._grFrom = { lat: prevCityLat, lng: prevCityLng };
+
+          // Determine which city this leg arrives at
+          const isReturn = leg.type === 'return';
+          if (isReturn) {
+            leg._grTo = {
+              lat: iataResults[0].cityCenterLat || tripData.from?.lat,
+              lng: iataResults[0].cityCenterLng || tripData.from?.lng,
+              country: iataResults[0].country,
+            };
+          } else {
+            // Find the destination airport coords for the "to" side
+            const destIata = iataResults[cityIdx + 1];
+            const dest = tripData.destinations[cityIdx];
+            leg._grTo = {
+              lat: destIata?.cityCenterLat || dest?.lat,
+              lng: destIata?.cityCenterLng || dest?.lng,
+              country: destIata?.country,
+            };
+          }
+
+          // When this leg reaches its target city, advance to next city and update prevCity
+          const matchName = leg.toCityName || leg.toName;
+          const targetCity = isReturn ? null : tripData.destinations[cityIdx];
+          if (!isReturn && targetCity && matchName === targetCity.name) {
+            const iata = iataResults[cityIdx + 1];
+            prevCityLat = iata?.cityCenterLat || targetCity.lat;
+            prevCityLng = iata?.cityCenterLng || targetCity.lng;
+            cityIdx++;
+          }
+        }
+      }
+      const groundRoutePromise = Promise.all(
+        flightLegs.map((leg) => {
+          if (leg.legType !== 'flight') return Promise.resolve(null);
+          const f = leg._grFrom, t = leg._grTo;
+          if (!f?.lat || !f?.lng || !t?.lat || !t?.lng) return Promise.resolve(null);
+          return Api.getTransferEstimate(f.lat, f.lng, t.lat, t.lng, t.country)
+            .catch(() => null);
+        })
+      );
+
+      // Wait for all three
+      const [flightResults, hotelResults, groundRouteResults] = await Promise.all([flightSearchPromise, hotelSearchPromise, groundRoutePromise]);
       Components.updateLoadingStep(1, 'done');
       Components.updateLoadingStep(2, 'done');
 
@@ -332,7 +384,7 @@ const Results = {
 
       // Step 5: Transfer costs via Google Directions (now with actual hotel coords + bidirectional)
       Components.updateLoadingStep(5, 'active');
-      this.plan = this.buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, hotelOffers, mealCostResults, layoverMealResult);
+      this.plan = this.buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, hotelOffers, mealCostResults, layoverMealResult, groundRouteResults);
 
       // Re-fetch flights for legs whose dates changed after arrival-date correction
       const legsToRefetch = [];
@@ -377,6 +429,7 @@ const Results = {
     let lastAirportCode = originAirport;
     // Use airport name for flight card display (not city/home name)
     let lastAirportName = iataResults[0].airportName || iataResults[0].airportCode;
+    let lastCityName = tripData.from.name;
 
     for (let i = 0; i < tripData.destinations.length; i++) {
       const destIata = iataResults[i + 1];
@@ -392,6 +445,7 @@ const Results = {
             to: null,
             fromName: lastAirportName,
             toName: toName,
+            fromCityName: lastCityName,
             toCityName: toName,
             date: currentDate,
             type: i === 0 ? 'outbound' : 'inter-city',
@@ -404,6 +458,7 @@ const Results = {
             to: destIata.airportCode,
             fromName: lastAirportName,
             toName: destAirportName,
+            fromCityName: lastCityName,
             toCityName: toName,
             date: currentDate,
             type: i === 0 ? 'outbound' : 'inter-city',
@@ -412,6 +467,7 @@ const Results = {
         }
         lastAirportCode = destIata.airportCode;
         lastAirportName = destAirportName;
+        lastCityName = toName;
       } else if (destIata.transitFromAirport) {
         // City without airport: fly to nearest airport, then train/bus
         const nearestAirport = destIata.airportCode;
@@ -423,6 +479,7 @@ const Results = {
             to: nearestAirport,
             fromName: lastAirportName,
             toName: nearestAirportName,
+            fromCityName: lastCityName,
             toCityName: destIata.nearestCity || toName,
             date: currentDate,
             type: 'inter-city',
@@ -435,6 +492,7 @@ const Results = {
           to: null,
           fromName: destIata.nearestCity || nearestAirportName,
           toName,
+          fromCityName: destIata.nearestCity || lastCityName,
           toCityName: toName,
           date: currentDate,
           type: 'inter-city',
@@ -443,6 +501,7 @@ const Results = {
         });
         lastAirportCode = nearestAirport;
         lastAirportName = nearestAirportName;
+        lastCityName = toName;
       } else {
         // Unknown city with no airport data at all - try flight anyway
         legs.push({
@@ -450,11 +509,13 @@ const Results = {
           to: destIata.airportCode || lastAirportCode,
           fromName: lastAirportName,
           toName: destIata.airportName || toName,
+          fromCityName: lastCityName,
           toCityName: toName,
           date: currentDate,
           type: 'inter-city',
           legType: 'flight'
         });
+        lastCityName = toName;
       }
 
       // Advance date: 1 day for travel + nights at this destination (default 1 night)
@@ -463,6 +524,7 @@ const Results = {
     }
 
     // Return leg: from last airport to origin
+    const homeName = tripData.from.name;
     if (lastAirportCode === originAirport) {
       // Same airport — skip flight, direct ground transfer home
       legs.push({
@@ -470,6 +532,8 @@ const Results = {
         to: null,
         fromName: lastAirportName,
         toName: iataResults[0].cityName || iataResults[0].airportName || originAirport,
+        fromCityName: lastCityName,
+        toCityName: homeName,
         date: currentDate,
         type: 'return',
         legType: 'skip',
@@ -480,6 +544,8 @@ const Results = {
         to: originAirport,
         fromName: lastAirportName,
         toName: iataResults[0].airportName || iataResults[0].airportCode,
+        fromCityName: lastCityName,
+        toCityName: homeName,
         date: currentDate,
         type: 'return',
         legType: 'flight'
@@ -502,7 +568,7 @@ const Results = {
     return date;
   },
 
-  buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, hotelOffers, mealCostResults, layoverMealResult) {
+  buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, hotelOffers, mealCostResults, layoverMealResult, groundRouteResults) {
     const cities = tripData.destinations.map((dest, i) => {
       const iata = iataResults[i + 1];
       let hotelBasePrice = CostEngine.getHotelBasePrice(iata.cityCode);
@@ -586,6 +652,8 @@ const Results = {
         ...leg,
         offers: enrichedFlights,
         selectedOffer: enrichedFlights[0] || null,
+        groundRoutes: groundRouteResults?.[i] || null,
+        selectedMode: 'flight',
       };
     });
 
@@ -622,6 +690,18 @@ const Results = {
         const leg = flightLegs[legIdx];
         const matchName = leg.toCityName || leg.toName;
         const isForThisCity = matchName === cities[i].name;
+
+        // Ground modes arrive same-day
+        if (leg.selectedMode && leg.selectedMode !== 'flight' && leg.groundRoutes) {
+          leg.arrivalDate = leg.date;
+          legIdx++;
+          if (isForThisCity) {
+            cities[i].checkInDate = leg.arrivalDate;
+            cities[i].arrivalTime = null;
+            break;
+          }
+          continue;
+        }
 
         // Use selected offer's arrival date if available
         const offer = leg.selectedOffer;
@@ -692,6 +772,19 @@ const Results = {
 
         if (leg.legType === 'skip') {
           // Same-airport: no flight, cursor stays as-is
+          legIdx++;
+          if (isForThisCity) break;
+          continue;
+        } else if (leg.selectedMode && leg.selectedMode !== 'flight' && leg.groundRoutes) {
+          // Ground transport mode: use duration from ground routes
+          leg.scheduleStart = new Date(cursor);
+          let durSec = 0;
+          if (leg.selectedMode === 'transit') durSec = leg.groundRoutes.transitRoutes?.[0]?.durationSec || 0;
+          else if (leg.selectedMode === 'drive') durSec = leg.groundRoutes.driving?.durationSec || 0;
+          else if (leg.selectedMode === 'walk') durSec = leg.groundRoutes.walking?.durationSec || 0;
+          else if (leg.selectedMode === 'bike') durSec = leg.groundRoutes.bicycling?.durationSec || 0;
+          cursor = Utils.addMinutesToDate(cursor, Math.round(durSec / 60));
+          leg.scheduleEnd = new Date(cursor);
           legIdx++;
           if (isForThisCity) break;
           continue;
@@ -769,10 +862,19 @@ const Results = {
       }
     }
 
-    // Return flight/train
+    // Return flight/train/ground
     const returnLeg = plan.flightLegs[plan.flightLegs.length - 1];
     if (returnLeg && returnLeg.legType !== 'skip') {
-      if (returnLeg.legType === 'train') {
+      if (returnLeg.selectedMode && returnLeg.selectedMode !== 'flight' && returnLeg.groundRoutes) {
+        returnLeg.scheduleStart = new Date(cursor);
+        let durSec = 0;
+        if (returnLeg.selectedMode === 'transit') durSec = returnLeg.groundRoutes.transitRoutes?.[0]?.durationSec || 0;
+        else if (returnLeg.selectedMode === 'drive') durSec = returnLeg.groundRoutes.driving?.durationSec || 0;
+        else if (returnLeg.selectedMode === 'walk') durSec = returnLeg.groundRoutes.walking?.durationSec || 0;
+        else if (returnLeg.selectedMode === 'bike') durSec = returnLeg.groundRoutes.bicycling?.durationSec || 0;
+        cursor = Utils.addMinutesToDate(cursor, Math.round(durSec / 60));
+        returnLeg.scheduleEnd = new Date(cursor);
+      } else if (returnLeg.legType === 'train') {
         returnLeg.scheduleStart = new Date(cursor);
         const trainDur = Utils.parseDurationMins(returnLeg.transitInfo?.duration);
         cursor = Utils.addMinutesToDate(cursor, trainDur);
@@ -1252,6 +1354,133 @@ const Results = {
     }
   },
 
+  // When user switches a flight leg to ground mode (or back), recalculate
+  // adjacent transfers so they route via station/city center instead of airport.
+  async _recalcTransfersForMode(legIndex) {
+    const plan = this.plan;
+    const leg = plan.flightLegs[legIndex];
+    if (!leg) return;
+
+    const isGround = leg.selectedMode && leg.selectedMode !== 'flight';
+
+    // Extract real station names from the transit route's first/last TRANSIT steps
+    let depStationName = null, arrStationName = null;
+    if (isGround && leg.groundRoutes?.transitRoutes?.[0]?.steps) {
+      const steps = leg.groundRoutes.transitRoutes[0].steps;
+      const transitSteps = steps.filter(s => s.mode === 'TRANSIT');
+      if (transitSteps.length > 0) {
+        depStationName = transitSteps[0].departureStop || null;
+        arrStationName = transitSteps[transitSteps.length - 1].arrivalStop || null;
+      }
+    }
+
+    // Walk legs to find departure city index (city before this leg)
+    let ci = 0;
+    for (let li = 0; li < legIndex; li++) {
+      const name = plan.flightLegs[li].toCityName || plan.flightLegs[li].toName;
+      if (ci < plan.cities.length && name === plan.cities[ci].name) ci++;
+    }
+    const depCityIdx = ci - 1; // -1 = home/origin
+
+    // Find arrival city: match toCityName, or look ahead for intermediate legs
+    let arrCityIdx = -1;
+    if (leg.type !== 'return') {
+      const dest = leg.toCityName || leg.toName;
+      arrCityIdx = plan.cities.findIndex(c => c.name === dest);
+      if (arrCityIdx < 0) {
+        for (let li = legIndex + 1; li < plan.flightLegs.length; li++) {
+          const n = plan.flightLegs[li].toCityName || plan.flightLegs[li].toName;
+          arrCityIdx = plan.cities.findIndex(c => c.name === n);
+          if (arrCityIdx >= 0) break;
+        }
+      }
+    }
+
+    // Helper: fetch new transfer routing and update in-place
+    async function refetchTransfer(t, fLat, fLng, tLat, tLng, fromLabel, toLabel, type, country) {
+      if (!t || !fLat || !fLng || !tLat || !tLng) return;
+      try {
+        const est = await Api.getTransferEstimate(fLat, fLng, tLat, tLng, country);
+        if (est) {
+          const bt = est.transitRoutes?.[0] || {};
+          Object.assign(t, {
+            from: fromLabel, to: toLabel, type,
+            distanceKm: est.driving.distanceKm, durationText: est.driving.duration,
+            drivingSummary: est.driving.summary, taxiCost: est.driving.taxiCost,
+            publicTransportCost: bt.publicTransportCost || 1,
+            transitDuration: bt.duration || est.driving.duration,
+            transitRoutes: est.transitRoutes || [], walking: est.walking || null, bicycling: est.bicycling || null,
+          });
+        }
+      } catch (e) { console.warn('Transfer recalc for mode change failed:', e); }
+    }
+
+    // Build ground-mode label for a city: use real station name if available, else "City Station"
+    function groundLabel(cityName, stationName) {
+      return stationName || `${cityName} Station`;
+    }
+
+    const promises = [];
+
+    // --- Departure side: recalculate transfer FROM departure city ---
+    if (depCityIdx >= 0) {
+      const city = plan.cities[depCityIdx];
+      const tIdx = 1 + depCityIdx * 2 + 1; // departure transfer
+      const t = plan.transfers[tIdx];
+      if (t && t.type !== 'none') {
+        const hotelLabel = city.hotelName ? `${city.hotelName}, ${city.name}` : `${city.name} Hotel`;
+        const pointLat = isGround ? (city.lat || city.hotelLat) : (city.airportLat || city.lat);
+        const pointLng = isGround ? (city.lng || city.hotelLng) : (city.airportLng || city.lng);
+        const pointLabel = isGround ? groundLabel(city.name, depStationName) : (city.airportName || `${city.name} Airport`);
+        const type = isGround ? 'hotel-to-station' : `hotel-to-${city.hasAirport ? 'airport' : 'station'}`;
+        promises.push(refetchTransfer(t, city.hotelLat, city.hotelLng, pointLat, pointLng, hotelLabel, pointLabel, type, city.country));
+      }
+    } else {
+      // Home → airport/station (transfers[0])
+      const t = plan.transfers[0];
+      if (t && t.type !== 'none') {
+        const homeLabel = plan.from.name || plan.from.cityName;
+        const pointLat = isGround ? plan.from.cityLat : plan.from.airportLat;
+        const pointLng = isGround ? plan.from.cityLng : plan.from.airportLng;
+        const pointLabel = isGround ? groundLabel(homeLabel, depStationName) : (plan.from.airportName || 'Airport');
+        const type = isGround ? 'home-to-station' : 'home-to-airport';
+        promises.push(refetchTransfer(t, plan.from.cityLat, plan.from.cityLng, pointLat, pointLng, homeLabel, pointLabel, type, plan.from.country));
+      }
+    }
+
+    // --- Arrival side: recalculate transfer TO arrival city ---
+    if (arrCityIdx >= 0) {
+      const city = plan.cities[arrCityIdx];
+      // Only recalculate for cities with airports; no-airport cities already use station routing
+      if (city.hasAirport) {
+        const tIdx = 1 + arrCityIdx * 2; // arrival transfer
+        const t = plan.transfers[tIdx];
+        if (t && t.type !== 'none') {
+          const hotelLabel = city.hotelName ? `${city.hotelName}, ${city.name}` : `${city.name} Hotel`;
+          const pointLat = isGround ? (city.lat || city.hotelLat) : (city.airportLat || city.lat);
+          const pointLng = isGround ? (city.lng || city.hotelLng) : (city.airportLng || city.lng);
+          const pointLabel = isGround ? groundLabel(city.name, arrStationName) : (city.airportName || `${city.name} Airport`);
+          const type = isGround ? 'station-to-hotel' : 'airport-to-hotel';
+          promises.push(refetchTransfer(t, pointLat, pointLng, city.hotelLat, city.hotelLng, pointLabel, hotelLabel, type, city.country));
+        }
+      }
+    } else if (leg.type === 'return') {
+      // Station/airport → home (transfers[last])
+      const lastIdx = plan.transfers.length - 1;
+      const t = plan.transfers[lastIdx];
+      if (t && t.type !== 'none') {
+        const homeLabel = plan.from.name || plan.from.cityName;
+        const pointLat = isGround ? plan.from.cityLat : plan.from.airportLat;
+        const pointLng = isGround ? plan.from.cityLng : plan.from.airportLng;
+        const pointLabel = isGround ? groundLabel(homeLabel, arrStationName) : (plan.from.airportName || 'Airport');
+        const type = isGround ? 'station-to-home' : 'airport-to-home';
+        promises.push(refetchTransfer(t, pointLat, pointLng, plan.from.cityLat, plan.from.cityLng, pointLabel, homeLabel, type, plan.from.country));
+      }
+    }
+
+    await Promise.all(promises);
+  },
+
   _showConfirmPopup(title, message) {
     return new Promise(resolve => {
       const overlay = document.createElement('div');
@@ -1304,9 +1533,13 @@ const Results = {
           changedLegs.push(legIdx);
           leg.date = currentDate;
         }
-        // Use selected offer arrival to determine actual arrival date
-        const offerArrival = Utils.getArrivalDate(leg.selectedOffer);
-        arrivalDate = offerArrival || currentDate;
+        // Ground modes arrive same-day; flights use offer arrival
+        if (leg.selectedMode && leg.selectedMode !== 'flight' && leg.groundRoutes) {
+          arrivalDate = currentDate;
+        } else {
+          const offerArrival = Utils.getArrivalDate(leg.selectedOffer);
+          arrivalDate = offerArrival || currentDate;
+        }
         leg.arrivalDate = arrivalDate;
 
         const matchName = leg.toCityName || leg.toName;
@@ -1339,6 +1572,7 @@ const Results = {
     await Promise.all(legIndices.map(async (li) => {
       const leg = plan.flightLegs[li];
       if (leg.legType === 'train' || leg.legType === 'skip') return;
+      if (leg.selectedMode && leg.selectedMode !== 'flight') return;
       try {
         const result = await Api.searchFlights(leg.from, leg.to, leg.date, plan.adults, plan.children);
         const flights = result?.flights || [];
@@ -1404,7 +1638,7 @@ const Results = {
     if (breakdownEl) {
       let html = `
         <div class="cost-line">
-          <span class="cost-line-label"><span class="icon">&#9992;&#65039;</span> Flights (${this.plan.flightLegs.filter(l => l.legType === 'flight').length} legs)</span>
+          <span class="cost-line-label"><span class="icon">&#9992;&#65039;</span> Transport (${this.plan.flightLegs.filter(l => l.legType === 'flight' || l.legType === 'train').length} legs)</span>
           <span class="cost-line-value">${Utils.formatCurrencyRange(costs.flights.low, costs.flights.high, 'EUR')}</span>
         </div>
       `;

@@ -248,17 +248,205 @@ const Components = {
     return this.AIRLINE_COLORS[code] || 'var(--color-primary)';
   },
 
+  _buildModePills(leg, legIndex) {
+    if (!leg.groundRoutes) return '';
+    const mode = leg.selectedMode || 'flight';
+    const gr = leg.groundRoutes;
+    const pills = [];
+    // Flight is always available if there are offers
+    if (leg.offers && leg.offers.length > 0) {
+      pills.push({ key: 'flight', icon: '&#9992;&#65039;', tip: 'Flight' });
+    }
+    if (gr.transitRoutes && gr.transitRoutes.length > 0) {
+      pills.push({ key: 'transit', icon: '&#128646;', tip: 'Train / Transit' });
+    }
+    if (gr.driving) {
+      pills.push({ key: 'drive', icon: '&#128663;', tip: 'Drive' });
+    }
+    if (gr.walking && gr.walking.durationSec < 36000) { // only if < 10h
+      pills.push({ key: 'walk', icon: '&#128694;', tip: 'Walk' });
+    }
+    if (gr.bicycling && gr.bicycling.durationSec < 36000) {
+      pills.push({ key: 'bike', icon: '&#128690;', tip: 'Bike' });
+    }
+    if (pills.length <= 1) return ''; // no toggle needed
+    return `<div class="transport-mode-toggle">${pills.map(p =>
+      `<button class="mode-pill${p.key === mode ? ' active' : ''}" title="${p.tip}" onclick="event.stopPropagation(); Components.selectTransportMode(${legIndex}, '${p.key}')">${p.icon}</button>`
+    ).join('')}</div>`;
+  },
+
+  _buildTransitOptionRow(route, legIndex, routeIndex, isSelected) {
+    const fareBadge = route.fareSource === 'google'
+      ? '<span class="fare-badge live">Google fare</span>'
+      : '<span class="fare-badge est">est.</span>';
+    return `
+      <div class="flight-option${isSelected ? ' selected' : ''}" onclick="Components.selectTransitOption(${legIndex}, ${routeIndex})" data-route-idx="${routeIndex}">
+        <div class="flight-option-airline">
+          <div class="airline-logo" style="background:var(--color-primary)">&#128646;</div>
+          <span class="airline-name">Transit</span>
+        </div>
+        <div class="flight-option-route">
+          <div class="flight-option-times">
+            <span class="dep-time">${route.departureTime || ''}</span>
+            <div class="flight-option-duration">
+              <span class="duration-text">${route.duration}</span>
+              <div class="duration-line"></div>
+              <span class="stops-text">${route.summary || 'Transit'}</span>
+            </div>
+            <span class="arr-time">${route.arrivalTime || ''}</span>
+          </div>
+        </div>
+        <div class="flight-option-price">
+          <span class="price-amount">${Utils.formatCurrency(route.publicTransportCost || 0, 'EUR')}</span>
+          <span class="price-label">per person ${fareBadge}</span>
+        </div>
+      </div>`;
+  },
+
+  selectTransitOption(legIndex, routeIndex) {
+    const leg = Results.plan?.flightLegs?.[legIndex];
+    if (!leg || !leg.groundRoutes?.transitRoutes?.[routeIndex]) return;
+    const routes = leg.groundRoutes.transitRoutes;
+    const selected = routes[routeIndex];
+    // Move selected to top
+    if (routeIndex !== 0) {
+      routes.splice(routeIndex, 1);
+      routes.unshift(selected);
+    }
+    // Re-render card in-place
+    const oldCard = document.querySelector(`.timeline-card[data-type="flight"][data-index="${legIndex}"]`);
+    if (oldCard) oldCard.replaceWith(this.createFlightCard(leg, legIndex));
+    Results.recalculateAndRenderCost();
+  },
+
+  _buildGroundRouteBody(leg, legIndex) {
+    const gr = leg.groundRoutes;
+    const mode = leg.selectedMode;
+    if (mode === 'transit') {
+      const routes = gr.transitRoutes || [];
+      if (routes.length === 0) return '<div class="ground-route-body"><p>No transit routes found.</p></div>';
+
+      // Selected (first) route shown prominently
+      const topHtml = this._buildTransitOptionRow(routes[0], legIndex, 0, true);
+
+      // Remaining routes in collapsible "more options"
+      let moreHtml = '';
+      const remaining = routes.slice(1);
+      if (remaining.length > 0) {
+        const moreRows = remaining.map((r, ri) => this._buildTransitOptionRow(r, legIndex, ri + 1, false)).join('');
+        moreHtml = `
+          <div class="flight-more-toggle" onclick="Components.toggleMoreOptions(this)">
+            &#9662; ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
+          </div>
+          <div class="flight-more-list">${moreRows}</div>
+        `;
+      }
+
+      return `
+        <div class="flight-options">${topHtml}</div>
+        ${moreHtml}
+      `;
+    }
+    if (mode === 'drive') {
+      const d = gr.driving;
+      return `<div class="ground-route-body">
+        <div class="ground-route-summary">
+          <div class="ground-route-icon">&#128663;</div>
+          <div class="ground-route-info">
+            <div class="route-label">Drive${d.summary ? ' via ' + d.summary : ''}</div>
+            <div class="route-meta">${d.duration} &middot; ~${Math.round(d.distanceKm)} km</div>
+          </div>
+          <div class="ground-route-cost">
+            <span class="cost-amount">${Utils.formatCurrency(d.taxiCost || 0, 'EUR')}</span>
+            <span class="cost-label">taxi estimate</span>
+          </div>
+        </div>
+      </div>`;
+    }
+    if (mode === 'walk') {
+      const w = gr.walking;
+      return `<div class="ground-route-body">
+        <div class="ground-route-summary">
+          <div class="ground-route-icon">&#128694;</div>
+          <div class="ground-route-info">
+            <div class="route-label">Walk</div>
+            <div class="route-meta">${w.duration} &middot; ${w.distanceText || (Math.round(w.distanceKm) + ' km')}</div>
+          </div>
+          <div class="ground-route-cost"><span class="cost-amount">Free</span></div>
+        </div>
+      </div>`;
+    }
+    if (mode === 'bike') {
+      const b = gr.bicycling;
+      return `<div class="ground-route-body">
+        <div class="ground-route-summary">
+          <div class="ground-route-icon">&#128690;</div>
+          <div class="ground-route-info">
+            <div class="route-label">Bicycle</div>
+            <div class="route-meta">${b.duration} &middot; ${b.distanceText || (Math.round(b.distanceKm) + ' km')}</div>
+          </div>
+          <div class="ground-route-cost"><span class="cost-amount">Free</span></div>
+        </div>
+      </div>`;
+    }
+    return '';
+  },
+
+  async selectTransportMode(legIndex, mode) {
+    const leg = Results.plan?.flightLegs?.[legIndex];
+    if (!leg) return;
+    leg.selectedMode = mode;
+    // Recalculate adjacent transfers (airport vs city center routing)
+    await Results._recalcTransfersForMode(legIndex);
+    // Re-render full timeline (transfers + schedule times all update)
+    Results.renderTimeline();
+    Results.recalculateAndRenderCost();
+  },
+
   createFlightCard(leg, index) {
     const card = document.createElement('div');
     card.className = 'timeline-card';
     card.dataset.type = 'flight';
     card.dataset.index = index;
 
+    const modePillsHtml = this._buildModePills(leg, index);
+    const currentMode = leg.selectedMode || 'flight';
+
+    // Non-flight mode: render ground transport body
+    if (currentMode !== 'flight' && leg.groundRoutes) {
+      const groundBodyHtml = this._buildGroundRouteBody(leg, index);
+      // Schedule times
+      const schedStart = Utils.formatDateTimeFromDate(leg.scheduleStart);
+      const schedEnd = Utils.formatDateTimeFromDate(leg.scheduleEnd);
+      const schedHtml = (schedStart && schedEnd)
+        ? `<span class="card-schedule">${schedStart} &rarr; ${schedEnd}</span>` : '';
+
+      const modeIcons = { transit: '&#128646;', drive: '&#128663;', walk: '&#128694;', bike: '&#128690;' };
+      const fromLabel = leg.fromCityName || leg.fromName || leg.from;
+      const toLabel = leg.toCityName || leg.toName || leg.to;
+
+      card.innerHTML = `
+        <div class="flight-card-header">
+          <span class="card-icon">${modeIcons[currentMode] || '&#128646;'}</span>
+          <div class="card-title">
+            <h4>${fromLabel} &rarr; ${toLabel}</h4>
+            ${schedHtml}
+          </div>
+          ${modePillsHtml}
+          <span class="flight-date">${Utils.formatDate(leg.date)}</span>
+        </div>
+        ${groundBodyHtml}
+      `;
+      return card;
+    }
+
+    // Flight mode (existing behavior)
     if (!leg.offers || leg.offers.length === 0) {
       card.innerHTML = `
         <div class="flight-card-header">
           <span class="card-icon">&#9992;&#65039;</span>
           <h4>${leg.fromName || leg.from} &rarr; ${leg.toName || leg.to}</h4>
+          ${modePillsHtml}
           <span class="flight-date">No flights found for ${Utils.formatDateShort(leg.date)}</span>
         </div>
       `;
@@ -304,6 +492,7 @@ const Components = {
           <h4>${leg.fromName || leg.from} &rarr; ${leg.toName || leg.to}</h4>
           ${flightSchedHtml}
         </div>
+        ${modePillsHtml}
         <span class="flight-date">${Utils.formatDate(leg.date)}</span>
       </div>
       <div class="flight-options">${optionsHtml}</div>

@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Trip Cost Calculator — a full-stack web app that calculates door-to-door travel costs by scraping real-time flight and hotel prices, combining them with Google Maps transfer estimates and static meal cost data.
 
+**Live at:** https://plan.aiezzy.com
+
 ## Running the Project
 
 Both servers must be running for full functionality:
@@ -21,6 +23,21 @@ cd python-api && pip install -r requirements.txt && python main.py
 Open `http://localhost:3000`. No build step — frontend is vanilla JS served as static files.
 
 The Python service requires Playwright browsers: `playwright install chromium`
+
+## Deployment (Railway)
+
+Two services from the same GitHub repo, auto-deploy on push to `main`:
+
+| Service | Root Directory | Dockerfile | Public |
+|---------|---------------|------------|--------|
+| **travel** (Node) | `/` (repo root) | `Dockerfile.node` | Yes — serves frontend |
+| **satisfied-liberation** (Python) | `/python-api` | `Dockerfile` | No — internal only |
+
+**Environment variables:**
+- Node service: `GOOGLE_API_KEY`, `PYTHON_API_URL` (points to Python service's private Railway URL)
+- Python service: `PORT`
+
+Railway configs: `railway.json` (Node) and `python-api/railway.json` (Python) — healthchecks, restart policies.
 
 ## Architecture
 
@@ -38,24 +55,30 @@ Browser (vanilla JS SPA)
 
 ### Frontend (`public/`)
 
-No framework. Six JS modules loaded via script tags in `index.html`:
+No framework. Seven JS modules loaded via script tags in `index.html`:
 
 - **app.js** — SPA page router, initializes Google Places library
-- **landing.js** — Form input with Google Places Autocomplete, destination chips, stepper controls
-- **results.js** (~1400 lines, the core) — Orchestrates the entire trip plan: builds flight legs, fetches all data in parallel, renders the interactive timeline, handles user edits (flight selection, nights, transfer modes), recomputes schedule/costs on every change
-- **components.js** — Card builders for flights, transfers, hotels, trains; stepper widget; chip widget
-- **cost-engine.js** — Pure calculation: flights + hotels + meals + transfers + layover meals → EUR totals with low/high estimates
+- **landing.js** — Form input with Google Places Autocomplete (any place type for destinations), destination chips, stepper controls
+- **results.js** (~1500 lines, the core) — Orchestrates the entire trip plan: builds flight legs, fetches all data in parallel (flights, hotels, ground routes), renders the interactive timeline, handles user edits (flight selection, transport mode, nights, transfer modes), recomputes schedule/costs on every change
+- **components.js** — Card builders for flights (Google Flights-style with airline logos, duration bars), ground transport modes (transit/drive/walk/bike), transfers, hotels, trains; transport mode selector; stepper widget; chip widget
+- **cost-engine.js** — Pure calculation: flights/ground transport + hotels + meals + transfers + layover meals → EUR totals with low/high estimates
 - **utils.js** — Currency conversion (36 currencies, EUR base), date/time formatting, debounce, duration parsing
 - **api.js** — Thin fetch wrapper for all `/api/*` endpoints
 
 **Key data flow in results.js:**
-1. `generateTripPlan()` → resolves IATA codes → `buildFlightLegs()` → parallel fetch (flights, hotels, meals, transfers) → `buildPlan()` → `renderTimeline()`
-2. User edits trigger: `onNightsChange()`, `selectFlightOption()`, `selectTransferMode()` → recalculate dates/transfers → re-render → `recalculateAndRenderCost()`
+1. `generateTripPlan()` → resolves IATA codes → `buildFlightLegs()` → parallel fetch (flights, hotels, ground routes, meals, transfers) → `buildPlan()` → `_computeArrivalDates()` → re-fetch flights if dates shifted → `renderTimeline()`
+2. User edits trigger: `onNightsChange()`, `selectFlightOption()`, `Components.selectTransportMode()`, `selectTransferMode()` → `recalculateFlightDates()` → `refetchFlights()` → re-render → `recalculateAndRenderCost()`
 3. `_computeTimelineSchedule()` walks the entire itinerary computing start/end times for every card
 
 **Flight leg types:** `'flight'` (normal), `'train'` (no-airport city), `'skip'` (same airport for both cities — direct ground transfer, no flight needed)
 
+**Multi-modal transport:** Each flight leg carries `groundRoutes` (fetched from `/api/transfer-estimate` city-to-city) and `selectedMode` (`'flight'` | `'transit'` | `'drive'` | `'walk'` | `'bike'`). When user selects a non-flight mode, the card switches to show ground transport info, schedule uses `durationSec` from the ground route, costs use transit fare or taxi estimate (walk/bike are free), and arrival dates use same-day (no overnight). Mode pills appear in the flight card header when `groundRoutes` data exists. `Components.selectTransportMode(legIndex, mode)` handles the switch, re-renders the card in-place, and triggers schedule/cost recalculation.
+
 **Transfer indexing:** `transfers[0]` = home→airport, then pairs per city: `transfers[1+i*2]` = arrival, `transfers[1+i*2+1]` = departure, `transfers[last]` = airport→home. Type `'none'` means skip rendering/scheduling.
+
+**Flight date computation:** `buildFlightLegs()` spaces initial search dates by `1 + nights` per city. After searching, `_computeArrivalDates()` corrects dates using actual flight arrival times + hotel nights. If corrected dates differ from searched dates, flights are re-fetched for the correct dates.
+
+**Skip cities after real flights:** When a skip leg is preceded by a real flight (e.g., fly AMS→IDR, then IDR is shared airport for nearby city), the city gets normal airport-to-hotel transfers, not direct drive from the previous city. Controlled by `skipCity` array in `estimateTransfers()`.
 
 ### Node Server (`server/`)
 
@@ -70,31 +93,33 @@ Express server at `server/server.js`. Key routes:
 | `/api/meal-costs?cityCode=&countryCode=` | Meal prices | Static `meal-data.js` |
 | `/api/transfer-estimate?originLat=&originLng=&destLat=&destLng=` | Transfer routing + costs | Google Directions API |
 
-`pythonApiGet(endpoint, params)` proxies to `http://localhost:5000`. In-memory cache with TTL (7 days for IATA, transfers).
+`pythonApiGet(endpoint, params)` proxies to Python API (configured via `PYTHON_API_URL` env var, defaults to `http://localhost:5000`). In-memory cache with TTL (7 days for IATA, transfers).
 
 ### Python Scraping API (`python-api/`)
 
-FastAPI + Playwright headless browser pool (2 contexts, recycled every 50 uses). Anti-detection via random user agents/viewports.
+FastAPI + Playwright headless browser pool (2 contexts, recycled every 50 uses). Anti-detection via random user agents/viewports. Health endpoint at `/health`.
 
 Scraper files in `scrapers/`:
-- **flights.py** — Navigates Google Flights URL, parses flight cards from DOM (price, times, duration, airline, stops, layovers). Handles overnight flight date correction using duration.
+- **flights.py** — Navigates Google Flights URL, parses flight cards from DOM (price, times, duration, airline, stops, layovers). Handles overnight flight date correction using departure + duration.
 - **hotels_list.py** — Searches Booking.com by geocode, extracts hotel cards
 - **hotels_offers.py** — Fetches specific hotel pricing by ID + dates
 - **base.py** — Rate limiting (3s Google, 2s Booking) and retry with exponential backoff
 
 Caching via `cachetools.TTLCache`: flights 30min, hotel lists 24h, hotel offers 30min.
 
-Config in `config.py` — all timeouts, rate limits, cache sizes, browser pool settings.
+Config in `config.py` — all timeouts, rate limits, cache sizes, browser pool settings. `PORT` configurable via env var.
 
 ## Key Patterns
 
 **Currency:** All internal prices are EUR. `Utils.formatCurrency(amount, sourceCurrency)` converts to `Utils.displayCurrency` for display. Exchange rates are hardcoded in `utils.js`.
 
-**0-night cities:** When user sets hotel nights to 0, the city becomes "pass through" — hotel card replaced with minimal card, arrival/departure transfers to hotel are hidden, transfers recalculated to point to city center instead of hotel (`_recalcCityTransfers()`).
+**0-night cities:** When user sets hotel nights to 0, the city becomes "pass through" — hotel card replaced with minimal card, transfers recalculated to point to city center instead of hotel (`_recalcCityTransfers()`). Confirmation popup via `_showConfirmPopup()`.
 
-**Same-airport cities:** When origin and destination share the same nearest airport (e.g. two nearby towns), `buildFlightLegs()` marks the leg as `legType: 'skip'` and `estimateTransfers()` creates direct-drive transfers between the cities instead of routing through the airport.
+**Same-airport cities:** When origin and destination share the same nearest airport (e.g. two nearby towns), `buildFlightLegs()` marks the leg as `legType: 'skip'` and `estimateTransfers()` creates direct-drive transfers between the cities instead of routing through the airport. If a real flight preceded the skip (flew to shared airport from far away), normal airport-to-hotel transfers are used instead.
 
 **Schedule computation:** `_computeTimelineSchedule()` walks events sequentially — transfer durations advance a cursor, flight departure/arrival times act as anchors, hotel check-in is always 3:00 PM (with early/late badge if traveler arrives before/after), check-out is 11:00 AM adjusted earlier if next flight requires it.
+
+**Overnight flights:** Both Python scraper and client-side enrichment use `departure + duration` to calculate correct arrival date (not just comparing arrival vs departure times).
 
 ## Static Data Files
 
