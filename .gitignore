@@ -1,0 +1,12 @@
+node_modules/
+__pycache__/
+*.pyc
+.env
+*.png
+*.jpg
+debug_*
+.claude/
+nul
+transfer_test.json
+tripcal.pdf
+trip/

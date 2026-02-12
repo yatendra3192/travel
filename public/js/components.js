@@ -1,0 +1,659 @@
+const Components = {
+  createChip(text, onRemove) {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.innerHTML = `
+      <span>${text}</span>
+      <button type="button" class="chip-remove" title="Remove">&times;</button>
+    `;
+    chip.querySelector('.chip-remove').addEventListener('click', onRemove);
+    return chip;
+  },
+
+  createStepper(value, min, max, onChange) {
+    const stepper = document.createElement('div');
+    stepper.className = 'stepper';
+    const minusBtn = document.createElement('button');
+    minusBtn.type = 'button';
+    minusBtn.className = 'stepper-btn minus';
+    minusBtn.textContent = '-';
+
+    const valueSpan = document.createElement('span');
+    valueSpan.className = 'stepper-value';
+    valueSpan.textContent = value;
+
+    const plusBtn = document.createElement('button');
+    plusBtn.type = 'button';
+    plusBtn.className = 'stepper-btn plus';
+    plusBtn.textContent = '+';
+
+    function update(newVal) {
+      const clamped = Utils.clamp(newVal, min, max);
+      valueSpan.textContent = clamped;
+      onChange(clamped);
+    }
+
+    minusBtn.addEventListener('click', () => update(parseInt(valueSpan.textContent) - 1));
+    plusBtn.addEventListener('click', () => update(parseInt(valueSpan.textContent) + 1));
+
+    stepper.append(minusBtn, valueSpan, plusBtn);
+    return stepper;
+  },
+
+  createTransferCard(transfer, index) {
+    const card = document.createElement('div');
+    card.className = 'timeline-card';
+    card.dataset.type = 'transfer';
+    card.dataset.index = index;
+
+    const icon = transfer.type === 'home-to-airport' || transfer.type === 'airport-to-home'
+      ? '&#128663;' : '&#128652;';
+
+    // Set default selectedMode if not already set
+    if (!transfer.selectedMode) {
+      transfer.selectedMode = 'transit';
+    }
+    const sel = transfer.selectedMode;
+
+    // Build transit routes detail HTML
+    const routes = transfer.transitRoutes || [];
+    let transitDetailHtml = '';
+
+    if (routes.length > 0 && routes[0].steps?.length > 0) {
+      transitDetailHtml = routes.map((route, ri) => {
+        const fareBadge = route.fareSource === 'google'
+          ? '<span class="fare-badge live">Google fare</span>'
+          : '<span class="fare-badge est">est.</span>';
+
+        const stepsHtml = route.steps.map(step => {
+          if (step.mode === 'WALKING') {
+            return `
+              <div class="route-step walk-step">
+                <div class="step-icon-col"><span class="step-dot walk-dot"></span><div class="step-line walk-line"></div></div>
+                <div class="step-content">
+                  <div class="step-label">Walk</div>
+                  <div class="step-meta">${step.duration}${step.distance ? ', ' + step.distance : ''}</div>
+                </div>
+              </div>`;
+          }
+          if (step.mode === 'TRANSIT') {
+            const vType = { BUS: 'Bus', HEAVY_RAIL: 'Train', SUBWAY: 'Metro', COMMUTER_TRAIN: 'Train', TRAM: 'Tram', LIGHT_RAIL: 'Light Rail', FERRY: 'Ferry' }[step.vehicleType] || 'Transit';
+            const vIcon = { BUS: '&#128653;', HEAVY_RAIL: '&#128646;', SUBWAY: '&#x24C2;', COMMUTER_TRAIN: '&#128646;', TRAM: '&#128651;', FERRY: '&#x26F4;' }[step.vehicleType] || '&#128652;';
+            return `
+              <div class="route-step transit-step">
+                <div class="step-icon-col">
+                  <span class="step-dot transit-dot" style="border-color:${step.lineColor}"></span>
+                  <div class="step-line transit-line" style="background:${step.lineColor}"></div>
+                </div>
+                <div class="step-content">
+                  <div class="step-departure">${step.departureTime ? step.departureTime + ' — ' : ''}${step.departureStop}</div>
+                  <div class="step-transit-info">
+                    <span class="transit-badge" style="background:${step.lineColor};color:${step.lineTextColor}">${step.lineName || vType}</span>
+                    <span class="step-headsign">${step.headsign}</span>
+                  </div>
+                  <div class="step-meta">${step.duration}${step.numStops ? ' (' + step.numStops + ' stops)' : ''}</div>
+                  <div class="step-arrival">${step.arrivalTime ? step.arrivalTime + ' — ' : ''}${step.arrivalStop}</div>
+                </div>
+              </div>`;
+          }
+          return '';
+        }).join('');
+
+        return `
+          <div class="transit-route-option ${ri === 0 ? 'active' : ''}" data-route="${ri}">
+            <div class="route-option-header" onclick="event.stopPropagation(); Components.toggleRouteDetail(this)">
+              <div class="route-option-summary">
+                <span class="route-time">${route.departureTime && route.arrivalTime ? route.departureTime + ' — ' + route.arrivalTime : ''}</span>
+                <span class="route-duration">${route.duration}</span>
+              </div>
+              <div class="route-option-detail">
+                <span class="route-summary-text">${route.summary || 'Transit'}</span>
+                <span class="route-cost">${Utils.formatCurrency(route.publicTransportCost, 'EUR')} ${fareBadge}</span>
+              </div>
+            </div>
+            <div class="route-steps-timeline" style="display:${ri === 0 ? 'none' : 'none'}">
+              ${stepsHtml}
+            </div>
+          </div>`;
+      }).join('');
+    }
+
+    const walk = transfer.walking;
+    const bike = transfer.bicycling;
+
+    // Compute header cost based on selected mode
+    const headerCost = this._getTransferModeCost(transfer);
+
+    // Schedule times with dates
+    const schedStart = Utils.formatDateTimeFromDate(transfer.scheduleStart);
+    const schedEnd = Utils.formatDateTimeFromDate(transfer.scheduleEnd);
+    const schedHtml = (schedStart && schedEnd)
+      ? `<span class="card-schedule">${schedStart} &rarr; ${schedEnd}</span>` : '';
+
+    card.innerHTML = `
+      <div class="card-header" onclick="Components.toggleCard(this)">
+        <div class="card-icon">${icon}</div>
+        <div class="card-title">
+          <h4>${transfer.from} &rarr; ${transfer.to}</h4>
+          <span class="card-subtitle">${transfer.durationText || 'Transfer'}${transfer.distanceKm ? ' &middot; ~' + Math.round(transfer.distanceKm) + ' km' : ''}</span>
+          ${schedHtml}
+        </div>
+        <div class="card-cost" id="transfer-cost-${index}">${Utils.formatCurrency(headerCost, 'EUR')}</div>
+        <span class="expand-arrow">&#9660;</span>
+      </div>
+      <div class="card-body">
+        <div class="transfer-mode-section${sel === 'taxi' ? ' selected' : ''}" data-mode="taxi" onclick="Components.selectTransferMode(${index}, 'taxi')">
+          <div class="transfer-mode-header">
+            <span class="transfer-mode-check">${sel === 'taxi' ? '&#9679;' : '&#9675;'}</span>
+            &#128661; <strong>Taxi / Cab</strong>
+            <span class="transfer-mode-cost">${Utils.formatCurrency(transfer.taxiCost, 'EUR')}</span>
+          </div>
+          <div class="transfer-mode-meta">
+            ${transfer.durationText || ''}${transfer.drivingSummary ? ' via ' + transfer.drivingSummary : ''} &middot; ~${Math.round(transfer.distanceKm)} km
+          </div>
+        </div>
+
+        <div class="transfer-mode-section${sel === 'transit' ? ' selected' : ''}" data-mode="transit" onclick="Components.selectTransferMode(${index}, 'transit')">
+          <div class="transfer-mode-header">
+            <span class="transfer-mode-check">${sel === 'transit' ? '&#9679;' : '&#9675;'}</span>
+            &#128646; <strong>Public Transport</strong>
+            <span class="transfer-mode-cost">${Utils.formatCurrency(transfer.publicTransportCost, 'EUR')}</span>
+          </div>
+          ${transitDetailHtml
+            ? `<div class="transit-routes-list" onclick="event.stopPropagation()">${transitDetailHtml}</div>`
+            : `<div class="transfer-mode-meta">${transfer.transitDuration || transfer.durationText || 'Duration varies'}</div>`
+          }
+        </div>
+
+        ${bike ? `<div class="transfer-mode-section${sel === 'bike' ? ' selected' : ''}" data-mode="bike" onclick="Components.selectTransferMode(${index}, 'bike')">
+          <div class="transfer-mode-header">
+            <span class="transfer-mode-check">${sel === 'bike' ? '&#9679;' : '&#9675;'}</span>
+            &#128690; <strong>Bicycle</strong>
+            <span class="transfer-mode-cost">Free</span>
+          </div>
+          <div class="transfer-mode-meta">${bike.duration} &middot; ${bike.distanceText || bike.distanceKm + ' km'}${bike.summary ? ' via ' + bike.summary : ''}</div>
+        </div>` : ''}
+
+        ${walk ? `<div class="transfer-mode-section${sel === 'walk' ? ' selected' : ''}" data-mode="walk" onclick="Components.selectTransferMode(${index}, 'walk')">
+          <div class="transfer-mode-header">
+            <span class="transfer-mode-check">${sel === 'walk' ? '&#9679;' : '&#9675;'}</span>
+            &#128694; <strong>Walking</strong>
+            <span class="transfer-mode-cost">Free</span>
+          </div>
+          <div class="transfer-mode-meta">${walk.duration} &middot; ${walk.distanceText || walk.distanceKm + ' km'}</div>
+        </div>` : ''}
+      </div>
+    `;
+    return card;
+  },
+
+  _getTransferModeCost(transfer) {
+    switch (transfer.selectedMode) {
+      case 'taxi': return transfer.taxiCost || 0;
+      case 'transit': return transfer.publicTransportCost || 0;
+      case 'bike': return 0;
+      case 'walk': return 0;
+      default: return transfer.publicTransportCost || 0;
+    }
+  },
+
+  selectTransferMode(transferIndex, mode) {
+    const plan = Results.plan;
+    if (!plan || !plan.transfers[transferIndex]) return;
+    const transfer = plan.transfers[transferIndex];
+    transfer.selectedMode = mode;
+
+    // Update the card UI
+    const card = document.querySelector(`.timeline-card[data-type="transfer"][data-index="${transferIndex}"]`);
+    if (card) {
+      // Toggle selected class on mode sections
+      card.querySelectorAll('.transfer-mode-section').forEach(sec => {
+        const isSelected = sec.dataset.mode === mode;
+        sec.classList.toggle('selected', isSelected);
+        const check = sec.querySelector('.transfer-mode-check');
+        if (check) check.innerHTML = isSelected ? '&#9679;' : '&#9675;';
+      });
+      // Update header cost
+      const costEl = card.querySelector(`#transfer-cost-${transferIndex}`);
+      if (costEl) {
+        const cost = this._getTransferModeCost(transfer);
+        costEl.textContent = Utils.formatCurrency(cost, 'EUR');
+      }
+    }
+
+    // Recalculate cost sidebar
+    Results.recalculateAndRenderCost();
+  },
+
+  toggleRouteDetail(headerEl) {
+    const timeline = headerEl.nextElementSibling;
+    if (timeline) {
+      const isVisible = timeline.style.display === 'block';
+      timeline.style.display = isVisible ? 'none' : 'block';
+      headerEl.classList.toggle('expanded', !isVisible);
+    }
+  },
+
+  // Airline brand colors for logo circles
+  AIRLINE_COLORS: {
+    KL: '#00A1DE', AF: '#002157', EK: '#D71921', EY: '#BD8B13', QR: '#5C0632',
+    SQ: '#F0AB00', LH: '#05164D', BA: '#075AAA', AA: '#B6252A', DL: '#003366',
+    UA: '#005DAA', '6E': '#2D2073', AI: '#E3350D', SV: '#006633', TK: '#C8102E',
+    MS: '#00205B', WY: '#8D1B3D', GF: '#C4975C', KU: '#006B3F', RJ: '#1B365D',
+    WZ: '#C6007E', FR: '#073590', U2: '#FF6600', W6: '#C6007E', LX: '#E2001A',
+    OS: '#D81E05', SK: '#00005E', AY: '#0B1560', IB: '#D81E05', TP: '#027651',
+  },
+
+  getAirlineColor(code) {
+    return this.AIRLINE_COLORS[code] || 'var(--color-primary)';
+  },
+
+  createFlightCard(leg, index) {
+    const card = document.createElement('div');
+    card.className = 'timeline-card';
+    card.dataset.type = 'flight';
+    card.dataset.index = index;
+
+    if (!leg.offers || leg.offers.length === 0) {
+      card.innerHTML = `
+        <div class="flight-card-header">
+          <span class="card-icon">&#9992;&#65039;</span>
+          <h4>${leg.fromName || leg.from} &rarr; ${leg.toName || leg.to}</h4>
+          <span class="flight-date">No flights found for ${Utils.formatDateShort(leg.date)}</span>
+        </div>
+      `;
+      return card;
+    }
+
+    const selectedIdx = leg.offers.indexOf(leg.selectedOffer);
+    const selectedOfferIdx = selectedIdx >= 0 ? selectedIdx : 0;
+    const topOffers = leg.offers.slice(0, 1);
+    const remaining = leg.offers.slice(1);
+
+    // Build top 1 option row (always visible)
+    const optionsHtml = topOffers.map((offer, oi) => this._buildFlightOptionRow(offer, index, oi, oi === selectedOfferIdx)).join('');
+
+    // Build remaining offers rows
+    let moreHtml = '';
+    if (remaining.length > 0) {
+      const moreRows = remaining.map((offer, oi) => this._buildFlightOptionRow(offer, index, oi + 1, (oi + 1) === selectedOfferIdx)).join('');
+      moreHtml = `
+        <div class="flight-more-toggle" onclick="Components.toggleMoreOptions(this)">
+          &#9662; ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
+        </div>
+        <div class="flight-more-list">${moreRows}</div>
+      `;
+    }
+
+    // Layover meals for selected offer
+    const selOffer = leg.selectedOffer || leg.offers[0];
+    const layoverHtml = this._buildLayoverMealsHtml(selOffer);
+
+    // Flight time summary with dates
+    const flightDepDt = selOffer?.departure ? new Date(selOffer.departure) : null;
+    const flightArrDt = selOffer?.arrival ? new Date(selOffer.arrival) : null;
+    const flightDepStr = flightDepDt ? Utils.formatDateTimeFromDate(flightDepDt) : '';
+    const flightArrStr = flightArrDt ? Utils.formatDateTimeFromDate(flightArrDt) : '';
+    const flightSchedHtml = (flightDepStr && flightArrStr)
+      ? `<span class="card-schedule">${flightDepStr} &rarr; ${flightArrStr}</span>` : '';
+
+    card.innerHTML = `
+      <div class="flight-card-header">
+        <span class="card-icon">&#9992;&#65039;</span>
+        <div class="card-title">
+          <h4>${leg.fromName || leg.from} &rarr; ${leg.toName || leg.to}</h4>
+          ${flightSchedHtml}
+        </div>
+        <span class="flight-date">${Utils.formatDate(leg.date)}</span>
+      </div>
+      <div class="flight-options">${optionsHtml}</div>
+      ${moreHtml}
+      <div class="flight-layover-area">${layoverHtml}</div>
+    `;
+    return card;
+  },
+
+  _buildFlightOptionRow(offer, legIndex, offerIndex, isSelected) {
+    const airlineCode = offer.airline || '';
+    const airlineName = offer.airlineName || airlineCode;
+    const color = this.getAirlineColor(airlineCode);
+    const fromCode = offer.segments?.[0]?.from || '';
+    const toCode = offer.segments?.[offer.segments.length - 1]?.to || '';
+    let stopsText;
+    if (offer.stops === 0) {
+      stopsText = '<span class="stops-direct">Nonstop</span>';
+    } else {
+      const layoverDetail = offer.layovers?.map(l => {
+        const dur = l.durationText || '';
+        return dur ? `${dur} ${l.airportCode}` : l.airportCode;
+      }).join(', ') || '';
+      stopsText = `${offer.stops} stop${offer.stops > 1 ? 's' : ''}`;
+      if (layoverDetail) stopsText += ` · ${layoverDetail}`;
+    }
+
+    return `
+      <div class="flight-option${isSelected ? ' selected' : ''}" onclick="Components.selectFlightOption(${legIndex}, ${offerIndex})" data-offer-idx="${offerIndex}">
+        <div class="flight-option-airline">
+          <div class="airline-logo" style="background:${color}">${airlineCode.slice(0, 2)}</div>
+          <span class="airline-name">${airlineName}</span>
+        </div>
+        <div class="flight-option-route">
+          <div class="flight-option-times">
+            <span class="dep-time">${Utils.formatTime(offer.departure)}</span>
+            <div class="flight-option-duration">
+              <span class="duration-text">${Utils.formatDuration(offer.duration)}</span>
+              <div class="duration-line"></div>
+              <span class="stops-text">${stopsText}</span>
+            </div>
+            <span class="arr-time">${Utils.formatTime(offer.arrival)}</span>
+          </div>
+          <div class="flight-option-codes">
+            <span>${fromCode}–${toCode}</span>
+          </div>
+        </div>
+        <div class="flight-option-price">
+          <span class="price-amount">${Utils.formatCurrency(offer.price, offer.currency || 'EUR')}</span>
+          <span class="price-label">per adult</span>
+        </div>
+      </div>`;
+  },
+
+  _buildLayoverMealsHtml(offer) {
+    if (!offer?.layovers || !offer.layovers.some(l => l.mealCost && l.mealCost.cost > 0)) return '';
+    return `
+      <div class="layover-meals-section">
+        <div class="card-detail-label" style="margin-bottom:6px;">Layover Meals</div>
+        ${offer.layovers.filter(l => l.mealCost && l.mealCost.cost > 0).map(l => `
+          <div class="layover-meal-row">
+            <div class="layover-meal-info">
+              <span class="layover-airport">${l.airportCode}</span>
+              <span class="layover-duration">${l.durationText} layover</span>
+            </div>
+            <div class="layover-meal-detail">
+              <span>${l.mealCost.description}</span>
+              <span class="layover-meal-cost">${Utils.formatCurrency(l.mealCost.cost, 'EUR')}/person</span>
+              ${l.mealCost.source ? `<span class="confidence-badge default">${l.mealCost.source.includes('airport') ? 'airport data' : 'estimate'}</span>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>`;
+  },
+
+  selectFlightOption(legIndex, offerIndex) {
+    // Update data model
+    if (typeof Results === 'undefined' || !Results.plan) return;
+    const leg = Results.plan.flightLegs[legIndex];
+    if (!leg || !leg.offers[offerIndex]) return;
+
+    const selected = leg.offers[offerIndex];
+    leg.selectedOffer = selected;
+
+    // Move selected offer to top of the list
+    if (offerIndex !== 0) {
+      leg.offers.splice(offerIndex, 1);
+      leg.offers.unshift(selected);
+    }
+
+    // Re-render just this flight card in-place (collapsed "more options")
+    const oldCard = document.querySelector(`.timeline-card[data-type="flight"][data-index="${legIndex}"]`);
+    if (oldCard) {
+      const newCard = this.createFlightCard(leg, legIndex);
+      oldCard.replaceWith(newCard);
+    }
+
+    // Recalculate dates (arrival date may differ) and cost sidebar
+    const oldArrival = leg.arrivalDate;
+    const newArrival = Utils.getArrivalDate(leg.selectedOffer) || leg.date;
+    leg.arrivalDate = newArrival;
+    if (oldArrival !== newArrival) {
+      Results.recalculateFlightDates();
+      Results.renderTimeline();
+    }
+    Results.recalculateAndRenderCost();
+  },
+
+  toggleMoreOptions(toggleEl) {
+    const list = toggleEl.nextElementSibling;
+    if (!list) return;
+    const isVisible = list.classList.contains('expanded');
+    list.classList.toggle('expanded');
+    toggleEl.innerHTML = isVisible
+      ? `&#9662; ${list.children.length} more option${list.children.length > 1 ? 's' : ''}`
+      : `&#9652; hide options`;
+  },
+
+  createCityCard(city, index, onNightsChange, onHotelTypeChange) {
+    const card = document.createElement('div');
+    card.className = 'timeline-card';
+    card.dataset.type = 'city';
+    card.dataset.index = index;
+
+    const nightlyRate = city.hotelBasePrice || CostEngine.getHotelBasePrice(city.cityCode);
+    const rooms = CostEngine.calculateRooms(city.adults || 2);
+    const isLive = city.hotelPriceSource === 'live';
+
+    // Build meal breakdown HTML
+    let mealHtml = '';
+    if (city.mealCosts) {
+      const meals = city.mealCosts;
+      const mealTier = 'mid';
+      const b = meals.breakfast?.[mealTier] || 8;
+      const l = meals.lunch?.[mealTier] || 14;
+      const d = meals.dinner?.[mealTier] || 20;
+      const daily = b + l + d;
+      const totalPersons = (city.adults || 2) + ((typeof city.children !== 'undefined' ? city.children : 0) * CostEngine.CHILD_MEAL_FACTOR);
+      const cityTotal = daily * city.nights * totalPersons;
+      const levelLabel = meals.level === 'city' ? 'city data' : meals.level === 'country' ? 'country avg' : 'estimate';
+      const levelClass = meals.level || 'default';
+
+      mealHtml = `
+        <div class="meal-costs-section">
+          <div class="meal-section-header">
+            &#127860; <strong>Daily Meals</strong>
+            <span class="confidence-badge ${levelClass}">${levelLabel}</span>
+          </div>
+          <div class="meal-breakdown" id="meal-breakdown-${index}">
+            <div class="meal-row"><span>Breakfast</span><span>${Utils.formatCurrency(b, 'EUR')}/person</span></div>
+            <div class="meal-row"><span>Lunch</span><span>${Utils.formatCurrency(l, 'EUR')}/person</span></div>
+            <div class="meal-row"><span>Dinner</span><span>${Utils.formatCurrency(d, 'EUR')}/person</span></div>
+            <div class="meal-row total"><span>${city.nights} night${city.nights !== 1 ? 's' : ''} total</span><span>~${Utils.formatCurrency(Math.round(cityTotal), 'EUR')}</span></div>
+          </div>
+          ${meals.source ? `<div class="source-note">${meals.source}</div>` : ''}
+        </div>
+      `;
+    }
+
+    const hotelNameDisplay = city.hotelName || `${city.name} Hotel`;
+
+    // Compute dates
+    const checkInDate = city.checkInDate || '';
+    const checkOutDate = checkInDate ? Utils.addDays(checkInDate, city.nights) : '';
+
+    // Traveler arrival time (when they actually reach the hotel)
+    const travArrival = Utils.formatTimeFromDate(city.travelerArrival);
+    // Hotel standard check-in / check-out
+    const hotelCiTime = Utils.formatTimeFromDate(city.hotelCheckIn);
+    const hotelCoTime = Utils.formatTimeFromDate(city.hotelCheckOut);
+    const ciDateStr = checkInDate ? Utils.formatDateShort(checkInDate) : '';
+    const coDateStr = checkOutDate ? Utils.formatDateShort(checkOutDate) : '';
+
+    // Early / late check-in indicator
+    let arrivalNote = '';
+    if (city.travelerArrival && city.hotelCheckIn) {
+      if (city.travelerArrival.getTime() < city.hotelCheckIn.getTime()) {
+        arrivalNote = '<span class="arrival-early">early check-in</span>';
+      } else if (city.travelerArrival.getTime() > city.hotelCheckIn.getTime()) {
+        arrivalNote = '<span class="arrival-late">late check-in</span>';
+      }
+    }
+
+    // Schedule line for card header (3 separate lines)
+    let schedHtml = '';
+    if (ciDateStr) {
+      const checkinStr = `Check-in ${hotelCiTime || '3:00 PM'}`;
+      const arrivalStr = travArrival ? `Arrives ${travArrival}` : '';
+      const checkoutStr = (coDateStr && hotelCoTime) ? `Check-out ${coDateStr} ${hotelCoTime}` : '';
+      schedHtml = `<span class="card-schedule">${checkinStr}</span>`;
+      if (arrivalStr && arrivalNote) {
+        schedHtml += `<span class="card-schedule">${arrivalStr} ${arrivalNote}</span>`;
+      } else if (arrivalStr) {
+        schedHtml += `<span class="card-schedule">${arrivalStr}</span>`;
+      }
+      if (checkoutStr) {
+        schedHtml += `<span class="card-schedule">${checkoutStr}</span>`;
+      }
+    }
+
+    // Detailed dates inside card body
+    let datesHtml = '';
+    if (ciDateStr) {
+      datesHtml = `<div class="city-dates">
+        <div class="city-dates-row">
+          <span>&#128273; Hotel check-in</span>
+          <strong>${ciDateStr}, ${hotelCiTime || '3:00 PM'}</strong>
+        </div>
+        <div class="city-dates-row">
+          <span>&#128337; Arrives at hotel</span>
+          <strong>${ciDateStr}${travArrival ? ', ' + travArrival : ''}</strong>
+          ${arrivalNote}
+        </div>
+        <div class="city-dates-row">
+          <span>&#128682; Hotel check-out</span>
+          <strong>${coDateStr}${hotelCoTime ? ', ' + hotelCoTime : ''}</strong>
+        </div>
+      </div>`;
+    }
+
+    card.innerHTML = `
+      <div class="card-header" onclick="Components.toggleCard(this)">
+        <div class="card-icon">&#127976;</div>
+        <div class="card-title">
+          <h4>${hotelNameDisplay}, ${city.name}</h4>
+          <span class="card-subtitle">${city.nights} night${city.nights !== 1 ? 's' : ''} stay &middot; ${Utils.formatCurrency(nightlyRate, 'EUR')}/night</span>
+          ${schedHtml}
+        </div>
+        <div class="card-cost" id="city-cost-${index}">${Utils.formatCurrency(nightlyRate * city.nights * rooms, 'EUR')}</div>
+        <span class="expand-arrow">&#9660;</span>
+      </div>
+      <div class="card-body">
+        <div class="city-card-body">
+          ${datesHtml}
+          <div class="city-edit-row">
+            <label>Nights</label>
+            <div id="nights-stepper-${index}"></div>
+          </div>
+          <div class="hotel-price-note">
+            ${Utils.formatCurrency(nightlyRate, 'EUR')} / night ${rooms > 1 ? `&middot; ${rooms} rooms` : ''}
+            <span class="confidence-badge ${isLive ? 'live' : 'default'}">${isLive ? 'live price' : 'estimate'}</span>
+          </div>
+          ${mealHtml}
+        </div>
+      </div>
+    `;
+
+    const stepperContainer = card.querySelector(`#nights-stepper-${index}`);
+    stepperContainer.appendChild(
+      Components.createStepper(city.nights, 0, 14, (val) => onNightsChange(index, val))
+    );
+
+    return card;
+  },
+
+  createTrainCard(leg, index) {
+    const card = document.createElement('div');
+    card.className = 'timeline-card';
+    card.dataset.type = 'train';
+    card.dataset.index = index;
+
+    const transit = leg.transitInfo || {};
+    const costPerPerson = transit.estimatedCostEur || 15;
+
+    const trainStart = Utils.formatDateTimeFromDate(leg.scheduleStart);
+    const trainEnd = Utils.formatDateTimeFromDate(leg.scheduleEnd);
+    const trainSchedHtml = (trainStart && trainEnd)
+      ? `<span class="card-schedule">${trainStart} &rarr; ${trainEnd}</span>` : '';
+
+    card.innerHTML = `
+      <div class="card-header" onclick="Components.toggleCard(this)">
+        <div class="card-icon">&#128646;</div>
+        <div class="card-title">
+          <h4>${leg.fromName || leg.from} &rarr; ${leg.toName}</h4>
+          <span class="card-subtitle">
+            ${transit.duration || 'Train/Bus'} &middot; ${Utils.formatDateShort(leg.date)}
+          </span>
+          ${trainSchedHtml}
+        </div>
+        <div class="card-cost">${Utils.formatCurrency(costPerPerson, 'EUR')}<br>
+          <span style="font-size:0.72rem;font-weight:400;color:var(--color-text-secondary)">per person</span>
+        </div>
+        <span class="expand-arrow">&#9660;</span>
+      </div>
+      <div class="card-body">
+        <div class="card-detail-row">
+          <span class="card-detail-label">Transport</span>
+          <span class="card-detail-value">Train / Bus</span>
+        </div>
+        <div class="card-detail-row">
+          <span class="card-detail-label">Duration</span>
+          <span class="card-detail-value">${transit.duration || 'Varies'}</span>
+        </div>
+        <div class="card-detail-row">
+          <span class="card-detail-label">Distance</span>
+          <span class="card-detail-value">${transit.distanceKm ? `~${transit.distanceKm} km` : 'Varies'}</span>
+        </div>
+        <div class="card-detail-row">
+          <span class="card-detail-label">Est. cost per person</span>
+          <span class="card-detail-value">${Utils.formatCurrency(costPerPerson, 'EUR')}</span>
+        </div>
+        <div class="hotel-price-note" style="margin-top:8px;">
+          No direct flights available. Train/bus is the recommended route.
+        </div>
+      </div>
+    `;
+    return card;
+  },
+
+  createConnector() {
+    const div = document.createElement('div');
+    div.className = 'timeline-connector';
+    return div;
+  },
+
+  toggleCard(headerEl) {
+    const isExpanded = headerEl.classList.contains('expanded');
+    headerEl.classList.toggle('expanded');
+    const body = headerEl.nextElementSibling;
+    if (body) body.classList.toggle('expanded');
+  },
+
+  renderLoadingSteps(steps) {
+    const container = document.getElementById('loading-steps');
+    container.innerHTML = '';
+    steps.forEach((text, i) => {
+      const step = document.createElement('div');
+      step.className = 'loading-step';
+      step.id = `loading-step-${i}`;
+      step.innerHTML = `
+        <span class="loading-step-icon">&#9675;</span>
+        <span>${text}</span>
+      `;
+      container.appendChild(step);
+    });
+  },
+
+  updateLoadingStep(index, status) {
+    const step = document.getElementById(`loading-step-${index}`);
+    if (!step) return;
+
+    step.classList.remove('active', 'done');
+    const icon = step.querySelector('.loading-step-icon');
+
+    if (status === 'active') {
+      step.classList.add('active');
+      icon.innerHTML = '&#9679;';
+    } else if (status === 'done') {
+      step.classList.add('done');
+      icon.innerHTML = '&#10003;';
+    }
+  },
+};

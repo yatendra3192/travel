@@ -1,0 +1,558 @@
+.results-header {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 10px var(--space-lg);
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  flex-wrap: wrap;
+}
+
+.results-header .btn-back {
+  margin-bottom: 2px;
+  align-self: center;
+}
+
+/* ── Header fields (From, To, Date, Time) ── */
+.header-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative;
+}
+
+.header-field label {
+  font-size: 0.62rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-light);
+  letter-spacing: 0.5px;
+}
+
+.header-from {
+  min-width: 140px;
+  max-width: 220px;
+}
+
+.header-to {
+  flex: 1;
+  min-width: 160px;
+  max-width: 380px;
+  position: relative;
+}
+
+.header-arrow {
+  font-size: 1rem;
+  color: var(--color-text-light);
+  margin-bottom: 4px;
+  align-self: center;
+}
+
+.header-input-wrap {
+  position: relative;
+}
+
+.header-input {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+  background: var(--color-bg);
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.header-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.12);
+}
+
+.header-input-sm {
+  width: 120px;
+  cursor: pointer;
+}
+
+/* ── Chips in header To field ── */
+.header-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 3px 4px;
+  background: var(--color-bg);
+  min-height: 30px;
+  cursor: text;
+}
+
+.header-chips-wrap:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.12);
+}
+
+.header-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.header-chips .chip {
+  font-size: 0.75rem;
+  padding: 2px 6px;
+  gap: 4px;
+}
+
+.header-chips .chip .chip-remove {
+  font-size: 0.85rem;
+  width: 14px;
+  height: 14px;
+}
+
+.header-chips-wrap .header-input-wrap {
+  flex: 1;
+  min-width: 80px;
+}
+
+.header-chips-wrap .header-input {
+  border: none;
+  padding: 2px 4px;
+  font-size: 0.82rem;
+  background: transparent;
+}
+
+.header-chips-wrap .header-input:focus {
+  box-shadow: none;
+}
+
+/* ── Autocomplete dropdown in header ── */
+.header-dropdown {
+  min-width: 280px;
+  z-index: 200;
+}
+
+.header-to .header-dropdown {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+}
+
+/* ── Recalculate button ── */
+.btn-recalculate {
+  align-self: flex-end;
+  padding: 6px 18px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: #fff;
+  background: var(--color-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  margin-bottom: 1px;
+  transition: background 0.15s;
+}
+
+.btn-recalculate:hover {
+  background: var(--color-primary-dark, #0d9488);
+}
+
+.btn-recalculate:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Travelers in header ── */
+.header-travelers-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.header-trav-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.header-travelers-row .stepper {
+  transform: scale(0.85);
+  transform-origin: center;
+}
+
+@media (max-width: 700px) {
+  .results-header {
+    gap: 8px;
+    padding: 8px var(--space-md);
+  }
+  .header-from { max-width: 160px; }
+  .header-to { max-width: 260px; }
+  .header-input-sm { width: 100px; }
+}
+
+.results-layout {
+  display: flex;
+  gap: var(--space-lg);
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-lg);
+  align-items: flex-start;
+}
+
+/* ── Left: Timeline ── */
+.results-timeline {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Travelers bar ── */
+.travelers-bar {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-md);
+}
+
+.travelers-bar label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.traveler-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.traveler-label {
+  font-size: 0.85rem;
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+/* ── Right: Cost sidebar ── */
+.cost-sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 80px;
+}
+
+.cost-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.cost-card h3 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-sm);
+}
+
+.total-cost-range {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-bottom: var(--space-lg);
+  line-height: 1.2;
+}
+
+.total-cost-range .currency-label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.cost-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-md);
+}
+
+.cost-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  font-size: 0.88rem;
+}
+
+.cost-line-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-text-secondary);
+}
+
+.cost-line-label .icon {
+  font-size: 1rem;
+}
+
+.cost-line-value {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.cost-footer {
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.estimate-note {
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  font-style: italic;
+}
+
+.travelers-summary {
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  margin-top: var(--space-sm);
+}
+
+/* ── Mobile cost bar ── */
+.mobile-cost-bar {
+  display: none;
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.08);
+  padding: 12px var(--space-md);
+  z-index: 50;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mobile-total {
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--color-primary);
+}
+
+.mobile-total .label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+}
+
+/* ── Flight segment detail ── */
+.flight-segments {
+  margin-top: var(--space-sm);
+}
+
+.segment-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 6px 0;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
+.segment-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-primary-light);
+  flex-shrink: 0;
+}
+
+/* ── Transfer details ── */
+.transfer-options {
+  display: flex;
+  gap: var(--space-md);
+  margin-top: var(--space-sm);
+}
+
+.transfer-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.transfer-option .cost {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+/* ── Nights row in city card ── */
+.city-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.city-edit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.city-edit-row label {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.hotel-price-note {
+  font-size: 0.8rem;
+  color: var(--color-text-light);
+  margin-top: var(--space-xs);
+}
+
+/* ── City card check-in/out dates ── */
+.city-dates {
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  padding: 8px 0 4px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.city-dates-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.city-dates strong {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.arrival-early {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #d97706;
+  background: #fef3c7;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+.arrival-late {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #dc2626;
+  background: #fef2f2;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+/* ── Pass-through card (0 nights) ── */
+.pass-through-card {
+  opacity: 0.7;
+  border-style: dashed;
+}
+.pass-through-card .card-header {
+  cursor: default;
+  align-items: center;
+}
+.pass-through-card .stepper { margin-left: auto; }
+
+/* ── Confirm popup ── */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.confirm-overlay.visible { opacity: 1; }
+.confirm-popup {
+  background: #fff;
+  border-radius: var(--radius-lg, 12px);
+  padding: 24px 28px;
+  max-width: 380px;
+  width: 90%;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+  text-align: center;
+}
+.confirm-popup h3 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  color: var(--color-text, #1e293b);
+}
+.confirm-popup p {
+  margin: 0 0 20px;
+  font-size: 0.9rem;
+  color: var(--color-text-muted, #64748b);
+}
+.confirm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.confirm-btn {
+  padding: 8px 20px;
+  border-radius: var(--radius-md, 8px);
+  border: none;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.confirm-btn.cancel {
+  background: var(--color-border, #e2e8f0);
+  color: var(--color-text, #1e293b);
+}
+.confirm-btn.cancel:hover { background: #cbd5e1; }
+.confirm-btn.confirm {
+  background: var(--color-primary, #0d9488);
+  color: #fff;
+}
+.confirm-btn.confirm:hover { background: #0f766e; }
+
+/* ── Error state ── */
+.error-banner {
+  background: var(--color-error-bg);
+  color: var(--color-error);
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  margin-bottom: var(--space-md);
+  border: 1px solid #fecaca;
+}

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trip Cost Calculator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/variables.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/landing.css">
+  <link rel="stylesheet" href="css/results.css">
+  <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+
+  <!-- ===== LANDING PAGE ===== -->
+  <div id="landing-page" class="page active">
+    <div class="landing-container">
+      <header class="landing-header">
+        <h1>Trip Cost Calculator</h1>
+        <p class="landing-subtitle">Calculate your complete door-to-door travel cost in seconds</p>
+      </header>
+
+      <form id="trip-form" class="trip-form" autocomplete="off">
+        <!-- FROM -->
+        <div class="form-group">
+          <label for="from-input">From</label>
+          <div class="input-wrapper">
+            <input type="text" id="from-input" placeholder="e.g. Thane West, Mumbai" autocomplete="off">
+            <div id="from-dropdown" class="autocomplete-dropdown"></div>
+          </div>
+        </div>
+
+        <!-- TO (multi-city) -->
+        <div class="form-group">
+          <label>Destinations</label>
+          <div id="destination-chips" class="chip-container"></div>
+          <div class="input-wrapper">
+            <input type="text" id="to-input" placeholder="Add a destination city..." autocomplete="off">
+            <div id="to-dropdown" class="autocomplete-dropdown"></div>
+          </div>
+        </div>
+
+        <!-- Departure Date -->
+        <div class="form-group">
+          <label for="departure-date">Departure Date</label>
+          <input type="date" id="departure-date">
+        </div>
+
+        <!-- Travelers -->
+        <div class="form-row">
+          <div class="form-group half">
+            <label>Adults</label>
+            <div class="stepper">
+              <button type="button" class="stepper-btn minus" data-target="adults-count">-</button>
+              <span id="adults-count" class="stepper-value">2</span>
+              <button type="button" class="stepper-btn plus" data-target="adults-count">+</button>
+            </div>
+          </div>
+          <div class="form-group half">
+            <label>Children <span class="age-hint">(2-11 yrs)</span></label>
+            <div class="stepper">
+              <button type="button" class="stepper-btn minus" data-target="children-count">-</button>
+              <span id="children-count" class="stepper-value">0</span>
+              <button type="button" class="stepper-btn plus" data-target="children-count">+</button>
+            </div>
+          </div>
+        </div>
+
+        <button type="submit" id="calculate-btn" class="btn-primary" disabled>
+          Calculate Trip Cost
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== LOADING OVERLAY ===== -->
+  <div id="loading-overlay" class="loading-overlay" style="display:none;">
+    <div class="loading-content">
+      <div class="loading-spinner"></div>
+      <div id="loading-steps" class="loading-steps"></div>
+    </div>
+  </div>
+
+  <!-- ===== RESULTS PAGE ===== -->
+  <div id="results-page" class="page">
+    <header class="results-header">
+      <button id="back-btn" class="btn-back">&larr; New Search</button>
+      <div class="header-field header-from">
+        <label>From</label>
+        <div class="header-input-wrap">
+          <input type="text" id="header-from-input" class="header-input" placeholder="Origin..." autocomplete="off">
+          <div id="header-from-dropdown" class="autocomplete-dropdown header-dropdown"></div>
+        </div>
+      </div>
+      <span class="header-arrow">&rarr;</span>
+      <div class="header-field header-to">
+        <label>To</label>
+        <div class="header-chips-wrap">
+          <div id="header-dest-chips" class="header-chips"></div>
+          <div class="header-input-wrap">
+            <input type="text" id="header-to-input" class="header-input" placeholder="Add city..." autocomplete="off">
+            <div id="header-to-dropdown" class="autocomplete-dropdown header-dropdown"></div>
+          </div>
+        </div>
+      </div>
+      <div class="header-field">
+        <label>Date</label>
+        <input type="date" id="search-bar-date" class="header-input header-input-sm">
+      </div>
+      <div class="header-field">
+        <label>Time</label>
+        <input type="time" id="search-bar-time" class="header-input header-input-sm" value="00:00">
+      </div>
+      <div class="header-field header-travelers">
+        <label>Travelers</label>
+        <div class="header-travelers-row">
+          <span class="header-trav-label">Adults</span>
+          <div id="header-adults-stepper"></div>
+          <span class="header-trav-label">Children</span>
+          <div id="header-children-stepper"></div>
+        </div>
+      </div>
+      <div class="header-field">
+        <label>Currency</label>
+        <select id="header-currency" class="header-input header-input-sm">
+          <option value="INR" selected>&#8377; INR</option>
+          <option value="EUR">&euro; EUR</option>
+          <option value="USD">$ USD</option>
+          <option value="GBP">&pound; GBP</option>
+          <option value="AED">AED</option>
+          <option value="JPY">&yen; JPY</option>
+          <option value="CHF">CHF</option>
+          <option value="CAD">CAD</option>
+          <option value="AUD">AUD</option>
+          <option value="SGD">SGD</option>
+          <option value="THB">THB</option>
+          <option value="MYR">MYR</option>
+          <option value="SAR">SAR</option>
+        </select>
+      </div>
+      <button type="button" id="header-recalc-btn" class="btn-recalculate">Recalculate</button>
+    </header>
+
+    <div class="results-layout">
+      <!-- LEFT: Editable Timeline -->
+      <div class="results-timeline" id="results-timeline">
+        <!-- Rendered by results.js -->
+      </div>
+
+      <!-- RIGHT: Sticky Cost Summary -->
+      <aside class="cost-sidebar" id="cost-sidebar">
+        <div class="cost-card">
+          <h3>Total Trip Cost</h3>
+          <div id="total-cost-range" class="total-cost-range">--</div>
+          <div id="cost-breakdown" class="cost-breakdown"></div>
+          <div class="cost-footer">
+            <span class="estimate-note">Estimated prices based on available data. Actual costs may vary.</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Mobile bottom sticky bar -->
+    <div id="mobile-cost-bar" class="mobile-cost-bar">
+      <div id="mobile-total" class="mobile-total">
+        <span class="label">Estimated Total</span>
+        --
+      </div>
+      <button id="mobile-details-btn" class="btn-small">View Details</button>
+    </div>
+  </div>
+
+  <!-- Google Maps -->
+  <script>
+    (g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.${c}apis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({
+      key: "AIzaSyC8L_jH9rFRguKUoh1BXdKUaaVLXZT9U1g",
+      v: "weekly"
+    });
+  </script>
+  <script src="js/utils.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/cost-engine.js"></script>
+  <script src="js/components.js"></script>
+  <script src="js/landing.js"></script>
+  <script src="js/results.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,1033 @@
+/* ── Buttons ── */
+.btn-primary {
+  display: block;
+  width: 100%;
+  padding: 14px 24px;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s, opacity 0.2s;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-back {
+  background: none;
+  border: 1px solid var(--color-border);
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--color-text-secondary);
+  transition: background 0.2s;
+}
+
+.btn-back:hover {
+  background: var(--color-bg-subtle);
+}
+
+.btn-small {
+  padding: 8px 16px;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ── Stepper (+/- control) ── */
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.stepper-btn {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  color: var(--color-text);
+  transition: background 0.15s;
+  font-weight: 600;
+}
+
+.stepper-btn:hover {
+  background: var(--color-border);
+}
+
+.stepper-value {
+  min-width: 32px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.95rem;
+  user-select: none;
+}
+
+/* ── Chips ── */
+.chip-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  border: 1px solid var(--color-primary-light);
+  border-radius: var(--radius-full);
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  font-size: 0.7rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+
+.chip-remove:hover {
+  background: var(--color-primary-dark);
+}
+
+/* ── Autocomplete dropdown ── */
+.input-wrapper {
+  position: relative;
+}
+
+.autocomplete-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+  max-height: 240px;
+  overflow-y: auto;
+  display: none;
+}
+
+.autocomplete-dropdown.show {
+  display: block;
+}
+
+.autocomplete-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  border-bottom: 1px solid var(--color-bg-subtle);
+  transition: background 0.1s;
+}
+
+.autocomplete-item:hover {
+  background: var(--color-primary-bg);
+}
+
+.autocomplete-item:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-item-main {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.autocomplete-item-sub {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+/* ── Pills (hotel type selector) ── */
+.pill-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  padding: 6px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  background: var(--color-bg);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.pill:hover {
+  border-color: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.pill.active {
+  background: var(--color-primary);
+  color: #fff;
+  border-color: var(--color-primary);
+}
+
+/* ── Timeline connector ── */
+.timeline-connector {
+  width: 2px;
+  height: 24px;
+  background: var(--color-border);
+  margin: 0 auto;
+  position: relative;
+}
+
+.timeline-connector::after {
+  content: '';
+  position: absolute;
+  bottom: -3px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-border);
+}
+
+/* ── Loading overlay ── */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(255,255,255,0.95);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.loading-content {
+  text-align: center;
+  max-width: 320px;
+}
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 4px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto var(--space-lg);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-steps {
+  text-align: left;
+}
+
+.loading-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+  transition: color 0.3s;
+}
+
+.loading-step.active {
+  color: var(--color-primary);
+  font-weight: 500;
+}
+
+.loading-step.done {
+  color: var(--color-savings);
+}
+
+.loading-step-icon {
+  width: 20px;
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+/* ── Card base ── */
+.timeline-card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+}
+
+.timeline-card:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.card-icon {
+  font-size: 1.3rem;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-subtle);
+  flex-shrink: 0;
+}
+
+.card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-title h4 {
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.card-subtitle {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+}
+
+.card-schedule {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-top: 2px;
+}
+
+.card-cost {
+  text-align: right;
+  font-weight: 700;
+  color: var(--color-primary);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.expand-arrow {
+  font-size: 0.7rem;
+  color: var(--color-text-light);
+  transition: transform 0.2s;
+}
+
+.card-header.expanded .expand-arrow {
+  transform: rotate(180deg);
+}
+
+.card-body {
+  padding: 0 16px 16px;
+  display: none;
+  border-top: 1px solid var(--color-bg-subtle);
+}
+
+.card-body.expanded {
+  display: block;
+  padding-top: 14px;
+}
+
+.card-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 0.85rem;
+}
+
+.card-detail-label {
+  color: var(--color-text-secondary);
+}
+
+.card-detail-value {
+  font-weight: 500;
+}
+
+/* ── Transfer option details ── */
+.transfer-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 0.85rem;
+}
+
+.transfer-option .cost {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.transfer-duration {
+  font-size: 0.75rem;
+  color: var(--color-text-light);
+  margin-left: auto;
+}
+
+.fare-badge {
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+.fare-badge.live {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.fare-badge.est {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-light);
+}
+
+/* ── Mode overview tabs (deprecated, kept for compat) ── */
+.mode-tabs { display: none; }
+
+/* ── Transfer mode sections (selectable) ── */
+.transfer-mode-section {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.transfer-mode-section:last-child {
+  margin-bottom: 0;
+}
+
+.transfer-mode-section:hover {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-primary-light);
+}
+
+.transfer-mode-section.selected {
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+.transfer-mode-check {
+  font-size: 0.85rem;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.transfer-mode-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+}
+
+.transfer-mode-cost {
+  margin-left: auto;
+  font-weight: 700;
+  color: var(--color-primary);
+  font-size: 0.9rem;
+}
+
+.transfer-mode-meta {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+  padding-left: 22px;
+}
+
+/* ── Transit route options ── */
+.transit-routes-list {
+  margin-top: 8px;
+}
+
+.transit-route-option {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  margin-bottom: 6px;
+  overflow: hidden;
+}
+
+.route-option-header {
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.route-option-header:hover {
+  background: var(--color-bg-subtle);
+}
+
+.route-option-header.expanded {
+  background: var(--color-bg-subtle);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.route-option-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+}
+
+.route-time {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.route-duration {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+.route-option-detail {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 3px;
+}
+
+.route-summary-text {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.route-cost {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ── Step-by-step timeline ── */
+.route-steps-timeline {
+  padding: 12px 12px 8px;
+}
+
+.route-step {
+  display: flex;
+  gap: 10px;
+  min-height: 40px;
+}
+
+.step-icon-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.step-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid #999;
+  background: #fff;
+  flex-shrink: 0;
+  z-index: 1;
+}
+
+.step-dot.walk-dot {
+  border-color: #999;
+  width: 10px;
+  height: 10px;
+}
+
+.step-dot.transit-dot {
+  border-width: 3px;
+  width: 14px;
+  height: 14px;
+}
+
+.step-line {
+  width: 3px;
+  flex: 1;
+  min-height: 20px;
+}
+
+.step-line.walk-line {
+  background: repeating-linear-gradient(
+    to bottom,
+    #bbb 0px, #bbb 4px,
+    transparent 4px, transparent 8px
+  );
+}
+
+.step-line.transit-line {
+  background: #4285F4;
+  border-radius: 2px;
+}
+
+.step-content {
+  flex: 1;
+  padding-bottom: 10px;
+  min-width: 0;
+}
+
+.step-label {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.step-meta {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+.step-departure,
+.step-arrival {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.step-transit-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+  flex-wrap: wrap;
+}
+
+.transit-badge {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.step-headsign {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+/* ── Meal costs section (in city cards) ── */
+.meal-costs-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.meal-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.88rem;
+  margin-bottom: 10px;
+}
+
+.meal-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.meal-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
+.meal-row.total {
+  border-top: 1px solid var(--color-border);
+  margin-top: 4px;
+  padding-top: 8px;
+  font-weight: 600;
+  color: var(--color-text);
+  font-size: 0.85rem;
+}
+
+/* ── Layover meals section (in flight cards) ── */
+.layover-meals-section {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.layover-meal-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 6px 0;
+  font-size: 0.82rem;
+  gap: 12px;
+}
+
+.layover-meal-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.layover-airport {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.layover-duration {
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+}
+
+.layover-meal-detail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  color: var(--color-text-secondary);
+}
+
+.layover-meal-cost {
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+/* ── Confidence badges ── */
+.confidence-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  font-weight: 600;
+  vertical-align: middle;
+  letter-spacing: 0.2px;
+}
+
+.confidence-badge.city {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.confidence-badge.country {
+  background: #fff8e1;
+  color: #f57f17;
+}
+
+.confidence-badge.default {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-light);
+}
+
+.confidence-badge.live {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+/* ── Source note ── */
+.source-note {
+  font-size: 0.7rem;
+  font-style: italic;
+  color: var(--color-text-light);
+  margin-top: 6px;
+}
+
+/* ── Flight card (Google Flights style) ── */
+.flight-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 10px;
+}
+
+.flight-card-header .card-icon {
+  font-size: 1.3rem;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-subtle);
+  flex-shrink: 0;
+}
+
+.flight-card-header .card-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.flight-card-header h4 {
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.flight-date {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* ── Flight option rows ── */
+.flight-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 16px 12px;
+}
+
+.flight-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.flight-option:hover {
+  box-shadow: var(--shadow-sm);
+  border-color: var(--color-primary-light);
+}
+
+.flight-option.selected {
+  border-left: 3px solid var(--color-primary);
+  background: var(--color-primary-bg);
+}
+
+/* Airline column */
+.flight-option-airline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 64px;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.airline-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: 0.5px;
+}
+
+.airline-name {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  text-align: center;
+  line-height: 1.2;
+  max-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Route column */
+.flight-option-route {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.flight-option-times {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dep-time,
+.arr-time {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.flight-option-duration {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 60px;
+}
+
+.duration-text {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.duration-line {
+  width: 100%;
+  height: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.stops-text {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.stops-direct {
+  color: var(--color-savings);
+  font-weight: 600;
+}
+
+.flight-option-codes {
+  display: flex;
+  justify-content: center;
+  font-size: 0.72rem;
+  color: var(--color-text-light);
+}
+
+/* Price column */
+.flight-option-price {
+  text-align: right;
+  flex-shrink: 0;
+  min-width: 70px;
+}
+
+.price-amount {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.price-label {
+  font-size: 0.68rem;
+  color: var(--color-text-secondary);
+}
+
+/* More options toggle */
+.flight-more-toggle {
+  padding: 6px 16px 10px;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.flight-more-toggle:hover {
+  color: var(--color-primary);
+}
+
+.flight-more-list {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 16px 12px;
+}
+
+.flight-more-list.expanded {
+  display: flex;
+}
+
+/* Layover area inside flight card */
+.flight-layover-area {
+  padding: 0 16px;
+}
+
+.flight-layover-area:empty {
+  display: none;
+}
+
+.flight-layover-area .layover-meals-section {
+  margin-top: 0;
+  padding: 10px 0 14px;
+  border-top: 1px solid var(--color-bg-subtle);
+}
+
+/* ── Responsive: stack flight option on narrow screens ── */
+@media (max-width: 520px) {
+  .flight-option {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .flight-option-airline {
+    flex-direction: row;
+    width: auto;
+    gap: 6px;
+  }
+  .airline-logo {
+    width: 28px;
+    height: 28px;
+    font-size: 0.6rem;
+  }
+  .flight-option-route {
+    flex-basis: 100%;
+    order: 3;
+  }
+  .flight-option-price {
+    margin-left: auto;
+  }
+  .dep-time, .arr-time {
+    font-size: 0.95rem;
+  }
+}
