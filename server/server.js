@@ -5,8 +5,8 @@ const { getCached, setCache } = require('./cache');
 const { getFallbackIata, getNoAirportCity, getNearestAirportByCoords } = require('./iata-data');
 const { getLayoverMealCost, getCityMealCosts } = require('./meal-data');
 
-const GOOGLE_API_KEY = 'AIzaSyC8L_jH9rFRguKUoh1BXdKUaaVLXZT9U1g';
-const PYTHON_API_BASE = 'http://localhost:5000';
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || 'AIzaSyC8L_jH9rFRguKUoh1BXdKUaaVLXZT9U1g';
+const PYTHON_API_BASE = process.env.PYTHON_API_URL || 'http://localhost:5000';
 
 const app = express();
 app.use(cors());

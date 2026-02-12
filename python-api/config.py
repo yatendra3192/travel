@@ -1,7 +1,8 @@
 """Configuration for the Python scraping API."""
 
 # Server
-PORT = 5000
+import os
+PORT = int(os.environ.get("PORT", 5000))
 HOST = "0.0.0.0"
 
 # Browser
