@@ -59,7 +59,7 @@ No framework. Seven JS modules loaded via script tags in `index.html`:
 
 - **app.js** — SPA page router, initializes Google Places library
 - **landing.js** — Form input with Google Places Autocomplete (any place type for destinations), destination chips, stepper controls
-- **results.js** (~1500 lines, the core) — Orchestrates the entire trip plan: builds flight legs, fetches all data in parallel (flights, hotels, ground routes), renders the interactive timeline, handles user edits (flight selection, transport mode, nights, transfer modes), recomputes schedule/costs on every change
+- **results.js** (~1700 lines, the core) — Orchestrates the entire trip plan: builds flight legs, fetches all data in parallel (flights, hotels, ground routes), renders the interactive timeline, handles user edits (flight selection, transport mode, nights, transfer modes), recomputes schedule/costs on every change
 - **components.js** — Card builders for flights (Google Flights-style with airline logos, duration bars), ground transport modes (transit/drive/walk/bike), transfers, hotels, trains; transport mode selector; stepper widget; chip widget
 - **cost-engine.js** — Pure calculation: flights/ground transport + hotels + meals + transfers + layover meals → EUR totals with low/high estimates
 - **utils.js** — Currency conversion (36 currencies, EUR base), date/time formatting, debounce, duration parsing
@@ -93,7 +93,7 @@ Express server at `server/server.js`. Key routes:
 | `/api/meal-costs?cityCode=&countryCode=` | Meal prices | Static `meal-data.js` |
 | `/api/transfer-estimate?originLat=&originLng=&destLat=&destLng=` | Transfer routing + costs | Google Directions API |
 
-`pythonApiGet(endpoint, params)` proxies to Python API (configured via `PYTHON_API_URL` env var, defaults to `http://localhost:5000`). In-memory cache with TTL (7 days for IATA, transfers).
+`pythonApiGet(endpoint, params)` proxies to Python API (configured via `PYTHON_API_URL` env var, defaults to `http://localhost:5000`). `cache.js` provides a simple in-memory Map-based TTL cache (7 days for IATA/transfers). `amadeus-auth.js` is a legacy module from when the project used the Amadeus API — no longer used.
 
 ### Python Scraping API (`python-api/`)
 
@@ -125,3 +125,9 @@ Config in `config.py` — all timeouts, rate limits, cache sizes, browser pool s
 
 - `server/iata-data.js` — Airport/city IATA code database (fallback when Google Geocoding unavailable)
 - `server/meal-data.js` — Meal costs by city/country (breakfast/lunch/dinner at budget/mid/luxury tiers)
+
+## Other
+
+**No tests or linter** — there is no test framework or linting configured. The only npm scripts are `start` and `dev` (uses `node --watch`).
+
+**`trip/` subfolder** — A separate standalone Trip Planner/Tour Guide app (3 static files: `index.html`, `app.js`, `style.css`). Unrelated to the main trip cost calculator. Has its own `CLAUDE.md`.

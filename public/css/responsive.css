@@ -6,7 +6,7 @@
   }
 
   .landing-header h1 {
-    font-size: 1.4rem;
+    font-size: 1.5rem;
   }
 
   .trip-form {
@@ -29,12 +29,55 @@
 
   .results-header {
     padding: var(--space-sm) var(--space-md);
+    gap: 6px;
+  }
+
+  .header-row-top {
+    flex-direction: column;
+    align-items: stretch;
     gap: 8px;
   }
 
-  .header-from { max-width: 150px; min-width: 110px; }
-  .header-to { max-width: 240px; }
-  .header-input-sm { width: 100px; }
+  .header-row-top .btn-back {
+    align-self: flex-start;
+  }
+
+  .header-route-group {
+    width: 100%;
+  }
+
+  .header-route-group .header-from {
+    min-width: 100px;
+    max-width: 150px;
+  }
+
+  .header-route-group .header-to {
+    max-width: none;
+  }
+
+  .header-schedule-group {
+    width: 100%;
+  }
+
+  .header-schedule-group .header-field {
+    flex: 1;
+  }
+
+  .header-schedule-group .header-input {
+    width: 100%;
+  }
+
+  .header-row-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .header-bottom-right {
+    margin-left: 0;
+    width: 100%;
+    justify-content: space-between;
+  }
 
   .travelers-bar {
     gap: var(--space-sm);
@@ -61,7 +104,7 @@
 
 @media (max-width: 480px) {
   .landing-header h1 {
-    font-size: 1.25rem;
+    font-size: 1.3rem;
   }
 
   .pill-group {

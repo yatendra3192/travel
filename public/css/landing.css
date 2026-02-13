@@ -1,3 +1,10 @@
+#landing-page {
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(20,184,166,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 30%, rgba(15,118,110,0.04) 0%, transparent 50%),
+    var(--color-bg-page);
+}
+
 .landing-container {
   max-width: 520px;
   margin: 0 auto;
@@ -14,22 +21,26 @@
 }
 
 .landing-header h1 {
-  font-size: 1.8rem;
+  font-size: 2rem;
   font-weight: 700;
   color: var(--color-primary);
   margin-bottom: var(--space-xs);
+  letter-spacing: -0.5px;
 }
 
 .landing-subtitle {
-  font-size: 0.95rem;
+  font-size: 1rem;
   color: var(--color-text-secondary);
+  max-width: 360px;
+  margin: 0 auto;
 }
 
 .trip-form {
   background: var(--color-bg);
   padding: var(--space-lg);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid rgba(0,0,0,0.04);
 }
 
 .form-group {
@@ -55,9 +66,14 @@
   font-size: 0.95rem;
   font-family: var(--font-family);
   color: var(--color-text);
-  background: var(--color-bg);
-  transition: border-color 0.2s, box-shadow 0.2s;
+  background: var(--color-bg-subtle);
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
   outline: none;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="date"]:focus {
+  background: var(--color-bg);
 }
 
 .form-group input:focus {

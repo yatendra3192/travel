@@ -37,6 +37,11 @@
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
   --shadow-lg: 0 8px 24px rgba(0,0,0,0.12);
+  --shadow-card-hover: 0 6px 16px rgba(0,0,0,0.1);
+  --color-flight-accent: #3b82f6;
+  --color-city-accent: var(--color-primary);
+  --color-transfer-accent: #94a3b8;
+  --color-train-accent: #8b5cf6;
 }
 
 *, *::before, *::after {

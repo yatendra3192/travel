@@ -87,61 +87,71 @@
   <!-- ===== RESULTS PAGE ===== -->
   <div id="results-page" class="page">
     <header class="results-header">
-      <button id="back-btn" class="btn-back">&larr; New Search</button>
-      <div class="header-field header-from">
-        <label>From</label>
-        <div class="header-input-wrap">
-          <input type="text" id="header-from-input" class="header-input" placeholder="Origin..." autocomplete="off">
-          <div id="header-from-dropdown" class="autocomplete-dropdown header-dropdown"></div>
+      <div class="header-row-top">
+        <button id="back-btn" class="btn-back">&larr; New Search</button>
+        <div class="header-route-group">
+          <div class="header-field header-from">
+            <label>From</label>
+            <div class="header-input-wrap">
+              <input type="text" id="header-from-input" class="header-input" placeholder="Origin..." autocomplete="off">
+              <div id="header-from-dropdown" class="autocomplete-dropdown header-dropdown"></div>
+            </div>
+          </div>
+          <span class="header-arrow">&#10132;</span>
+          <div class="header-field header-to">
+            <label>To</label>
+            <div class="header-chips-wrap">
+              <div id="header-dest-chips" class="header-chips"></div>
+              <div class="header-input-wrap">
+                <input type="text" id="header-to-input" class="header-input" placeholder="Add city..." autocomplete="off">
+                <div id="header-to-dropdown" class="autocomplete-dropdown header-dropdown"></div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-      <span class="header-arrow">&rarr;</span>
-      <div class="header-field header-to">
-        <label>To</label>
-        <div class="header-chips-wrap">
-          <div id="header-dest-chips" class="header-chips"></div>
-          <div class="header-input-wrap">
-            <input type="text" id="header-to-input" class="header-input" placeholder="Add city..." autocomplete="off">
-            <div id="header-to-dropdown" class="autocomplete-dropdown header-dropdown"></div>
+        <div class="header-schedule-group">
+          <div class="header-field">
+            <label>Date</label>
+            <input type="date" id="search-bar-date" class="header-input header-input-sm">
+          </div>
+          <div class="header-field">
+            <label>Time</label>
+            <input type="time" id="search-bar-time" class="header-input header-input-sm" value="00:00">
           </div>
         </div>
       </div>
-      <div class="header-field">
-        <label>Date</label>
-        <input type="date" id="search-bar-date" class="header-input header-input-sm">
-      </div>
-      <div class="header-field">
-        <label>Time</label>
-        <input type="time" id="search-bar-time" class="header-input header-input-sm" value="00:00">
-      </div>
-      <div class="header-field header-travelers">
-        <label>Travelers</label>
-        <div class="header-travelers-row">
-          <span class="header-trav-label">Adults</span>
-          <div id="header-adults-stepper"></div>
-          <span class="header-trav-label">Children</span>
-          <div id="header-children-stepper"></div>
+      <div class="header-row-bottom">
+        <div class="header-field header-travelers">
+          <label>Travelers</label>
+          <div class="header-travelers-row">
+            <span class="header-trav-label">Adults</span>
+            <div id="header-adults-stepper"></div>
+            <span class="header-trav-label">Children</span>
+            <div id="header-children-stepper"></div>
+          </div>
+        </div>
+        <div class="header-bottom-right">
+          <div class="header-field">
+            <label>Currency</label>
+            <select id="header-currency" class="header-input header-input-sm">
+              <option value="INR" selected>&#8377; INR</option>
+              <option value="EUR">&euro; EUR</option>
+              <option value="USD">$ USD</option>
+              <option value="GBP">&pound; GBP</option>
+              <option value="AED">AED</option>
+              <option value="JPY">&yen; JPY</option>
+              <option value="CHF">CHF</option>
+              <option value="CAD">CAD</option>
+              <option value="AUD">AUD</option>
+              <option value="SGD">SGD</option>
+              <option value="THB">THB</option>
+              <option value="MYR">MYR</option>
+              <option value="SAR">SAR</option>
+            </select>
+          </div>
+          <button type="button" id="header-recalc-btn" class="btn-recalculate">Recalculate</button>
         </div>
       </div>
-      <div class="header-field">
-        <label>Currency</label>
-        <select id="header-currency" class="header-input header-input-sm">
-          <option value="INR" selected>&#8377; INR</option>
-          <option value="EUR">&euro; EUR</option>
-          <option value="USD">$ USD</option>
-          <option value="GBP">&pound; GBP</option>
-          <option value="AED">AED</option>
-          <option value="JPY">&yen; JPY</option>
-          <option value="CHF">CHF</option>
-          <option value="CAD">CAD</option>
-          <option value="AUD">AUD</option>
-          <option value="SGD">SGD</option>
-          <option value="THB">THB</option>
-          <option value="MYR">MYR</option>
-          <option value="SAR">SAR</option>
-        </select>
-      </div>
-      <button type="button" id="header-recalc-btn" class="btn-recalculate">Recalculate</button>
     </header>
 
     <div class="results-layout">
