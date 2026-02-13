@@ -55,7 +55,15 @@ Browser (vanilla JS SPA)
 
 ### Frontend (`public/`)
 
-No framework. Seven JS modules loaded via script tags in `index.html`:
+No framework, no bundler. Seven JS modules loaded via script tags in `index.html`. Five CSS files in `public/css/` (no preprocessor):
+
+- **variables.css** — Design tokens (`:root` custom properties): colors, spacing, radii, shadows, font, type-specific accent colors (`--color-flight-accent`, `--color-city-accent`, `--color-transfer-accent`, `--color-train-accent`). Also contains reset and base styles.
+- **landing.css** — Landing page form card and inputs
+- **components.css** — All reusable UI: buttons, steppers, autocomplete dropdown, timeline cards/connectors, flight option cards, transport mode selectors, transfer sections, loading overlay/spinner. Card type styling uses `data-type` attribute on `.timeline-card` elements (`flight`, `city`, `transfer`, `train`) for colored left borders and icon backgrounds.
+- **results.css** — Results page layout: sticky header (two-row: route/schedule on top, travelers/actions on bottom), timeline column, cost sidebar, mobile cost bar, confirm popup. Header classes: `.header-row-top` (`.header-route-group` + `.header-schedule-group`), `.header-row-bottom` (`.header-bottom-left` travelers + `.header-bottom-right` currency/recalculate).
+- **responsive.css** — Mobile breakpoints at 768px and 480px
+
+JS modules:
 
 - **app.js** — SPA page router, initializes Google Places library
 - **landing.js** — Form input with Google Places Autocomplete (any place type for destinations), destination chips, stepper controls
@@ -93,7 +101,9 @@ Express server at `server/server.js`. Key routes:
 | `/api/meal-costs?cityCode=&countryCode=` | Meal prices | Static `meal-data.js` |
 | `/api/transfer-estimate?originLat=&originLng=&destLat=&destLng=` | Transfer routing + costs | Google Directions API |
 
-`pythonApiGet(endpoint, params)` proxies to Python API (configured via `PYTHON_API_URL` env var, defaults to `http://localhost:5000`). `cache.js` provides a simple in-memory Map-based TTL cache (7 days for IATA/transfers). `amadeus-auth.js` is a legacy module from when the project used the Amadeus API — no longer used.
+`pythonApiGet(endpoint, params)` proxies to Python API (configured via `PYTHON_API_URL` env var, defaults to `http://localhost:5000`). `cache.js` provides a simple in-memory Map-based TTL cache (7 days for IATA/transfers).
+
+**Dead code:** `amadeus-auth.js` is a legacy module from when the project used the Amadeus API — no longer imported or used. Contains hardcoded credentials that should be removed.
 
 ### Python Scraping API (`python-api/`)
 
@@ -126,8 +136,17 @@ Config in `config.py` — all timeouts, rate limits, cache sizes, browser pool s
 - `server/iata-data.js` — Airport/city IATA code database (fallback when Google Geocoding unavailable)
 - `server/meal-data.js` — Meal costs by city/country (breakfast/lunch/dinner at budget/mid/luxury tiers)
 
+## CSS Conventions
+
+- All colors, spacing, radii, and shadows use CSS custom properties from `variables.css` — never hardcode values.
+- Timeline cards use `data-type` HTML attribute (`flight`, `city`, `transfer`, `train`) — CSS in `components.css` applies type-specific accent colors via `[data-type="..."]` selectors.
+- The results header is sticky (`position: sticky; top: 0`) at ~130px height. The cost sidebar is also sticky with `top: 140px` to clear the header.
+- Animations use `@keyframes` defined in `components.css` (e.g., `dropdownFadeIn`, `stepPulse`, `popupSlideUp`).
+
 ## Other
 
 **No tests or linter** — there is no test framework or linting configured. The only npm scripts are `start` and `dev` (uses `node --watch`).
 
 **`trip/` subfolder** — A separate standalone Trip Planner/Tour Guide app (3 static files: `index.html`, `app.js`, `style.css`). Unrelated to the main trip cost calculator. Has its own `CLAUDE.md`.
+
+**Known issues:** Frontend uses `innerHTML` with template literals extensively — no sanitization of user/API data before DOM insertion. The Google Maps API key is hardcoded in `index.html`.

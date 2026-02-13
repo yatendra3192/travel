@@ -3,7 +3,7 @@ const Components = {
     const chip = document.createElement('div');
     chip.className = 'chip';
     chip.innerHTML = `
-      <span>${text}</span>
+      <span>${Utils.escapeHtml(text)}</span>
       <button type="button" class="chip-remove" title="Remove">&times;</button>
     `;
     chip.querySelector('.chip-remove').addEventListener('click', onRemove);
@@ -82,17 +82,17 @@ const Components = {
             return `
               <div class="route-step transit-step">
                 <div class="step-icon-col">
-                  <span class="step-dot transit-dot" style="border-color:${step.lineColor}"></span>
-                  <div class="step-line transit-line" style="background:${step.lineColor}"></div>
+                  <span class="step-dot transit-dot" style="border-color:${Utils.sanitizeColor(step.lineColor)}"></span>
+                  <div class="step-line transit-line" style="background:${Utils.sanitizeColor(step.lineColor)}"></div>
                 </div>
                 <div class="step-content">
-                  <div class="step-departure">${step.departureTime ? step.departureTime + ' — ' : ''}${step.departureStop}</div>
+                  <div class="step-departure">${step.departureTime ? Utils.escapeHtml(step.departureTime) + ' — ' : ''}${Utils.escapeHtml(step.departureStop)}</div>
                   <div class="step-transit-info">
-                    <span class="transit-badge" style="background:${step.lineColor};color:${step.lineTextColor}">${step.lineName || vType}</span>
-                    <span class="step-headsign">${step.headsign}</span>
+                    <span class="transit-badge" style="background:${Utils.sanitizeColor(step.lineColor)};color:${Utils.sanitizeColor(step.lineTextColor)}">${Utils.escapeHtml(step.lineName || vType)}</span>
+                    <span class="step-headsign">${Utils.escapeHtml(step.headsign)}</span>
                   </div>
-                  <div class="step-meta">${step.duration}${step.numStops ? ' (' + step.numStops + ' stops)' : ''}</div>
-                  <div class="step-arrival">${step.arrivalTime ? step.arrivalTime + ' — ' : ''}${step.arrivalStop}</div>
+                  <div class="step-meta">${Utils.escapeHtml(step.duration)}${step.numStops ? ' (' + step.numStops + ' stops)' : ''}</div>
+                  <div class="step-arrival">${step.arrivalTime ? Utils.escapeHtml(step.arrivalTime) + ' — ' : ''}${Utils.escapeHtml(step.arrivalStop)}</div>
                 </div>
               </div>`;
           }
@@ -103,11 +103,11 @@ const Components = {
           <div class="transit-route-option ${ri === 0 ? 'active' : ''}" data-route="${ri}">
             <div class="route-option-header" onclick="event.stopPropagation(); Components.toggleRouteDetail(this)">
               <div class="route-option-summary">
-                <span class="route-time">${route.departureTime && route.arrivalTime ? route.departureTime + ' — ' + route.arrivalTime : ''}</span>
-                <span class="route-duration">${route.duration}</span>
+                <span class="route-time">${route.departureTime && route.arrivalTime ? Utils.escapeHtml(route.departureTime) + ' — ' + Utils.escapeHtml(route.arrivalTime) : ''}</span>
+                <span class="route-duration">${Utils.escapeHtml(route.duration)}</span>
               </div>
               <div class="route-option-detail">
-                <span class="route-summary-text">${route.summary || 'Transit'}</span>
+                <span class="route-summary-text">${Utils.escapeHtml(route.summary || 'Transit')}</span>
                 <span class="route-cost">${Utils.formatCurrency(route.publicTransportCost, 'EUR')} ${fareBadge}</span>
               </div>
             </div>
@@ -134,7 +134,7 @@ const Components = {
       <div class="card-header" onclick="Components.toggleCard(this)">
         <div class="card-icon">${icon}</div>
         <div class="card-title">
-          <h4>${transfer.from} &rarr; ${transfer.to}</h4>
+          <h4>${Utils.escapeHtml(transfer.from)} &rarr; ${Utils.escapeHtml(transfer.to)}</h4>
           <span class="card-subtitle">${transfer.durationText || 'Transfer'}${transfer.distanceKm ? ' &middot; ~' + Math.round(transfer.distanceKm) + ' km' : ''}</span>
           ${schedHtml}
         </div>
@@ -149,7 +149,7 @@ const Components = {
             <span class="transfer-mode-cost">${Utils.formatCurrency(transfer.taxiCost, 'EUR')}</span>
           </div>
           <div class="transfer-mode-meta">
-            ${transfer.durationText || ''}${transfer.drivingSummary ? ' via ' + transfer.drivingSummary : ''} &middot; ~${Math.round(transfer.distanceKm)} km
+            ${Utils.escapeHtml(transfer.durationText || '')}${transfer.drivingSummary ? ' via ' + Utils.escapeHtml(transfer.drivingSummary) : ''} &middot; ~${Math.round(transfer.distanceKm)} km
           </div>
         </div>
 
@@ -611,6 +611,25 @@ const Components = {
       : `&#9652; hide options`;
   },
 
+  _buildHotelOptionRow(hotel, cityIndex, optionIndex, isSelected) {
+    const distanceText = hotel.distance ? `${hotel.distance.toFixed(1)} km from center` : '';
+    const roomText = hotel.roomType || '';
+    const metaParts = [distanceText, roomText].filter(Boolean).join(' \u00b7 ');
+
+    return `
+      <div class="hotel-option${isSelected ? ' selected' : ''}" onclick="Results.selectHotelOption(${cityIndex}, ${optionIndex})">
+        <div class="hotel-option-icon">&#127976;</div>
+        <div class="hotel-option-info">
+          <div class="hotel-option-name">${Utils.escapeHtml(hotel.name || 'Hotel')}</div>
+          ${metaParts ? `<div class="hotel-option-meta">${Utils.escapeHtml(metaParts)}</div>` : ''}
+        </div>
+        <div class="hotel-option-price">
+          <span class="price-amount">${Utils.formatCurrency(hotel.pricePerNight, 'EUR')}</span>
+          <span class="price-label">per night</span>
+        </div>
+      </div>`;
+  },
+
   createCityCard(city, index, onNightsChange, onHotelTypeChange) {
     const card = document.createElement('div');
     card.className = 'timeline-card';
@@ -713,12 +732,41 @@ const Components = {
       </div>`;
     }
 
+    // Build hotel options HTML
+    let hotelOptionsHtml = '';
+    const hotelOpts = city.hotelOptions || [];
+    if (hotelOpts.length > 0) {
+      const topHtml = this._buildHotelOptionRow(hotelOpts[0], index, 0, true);
+      let moreHtml = '';
+      const remaining = hotelOpts.slice(1);
+      if (remaining.length > 0) {
+        const moreRows = remaining.map((h, hi) => this._buildHotelOptionRow(h, index, hi + 1, false)).join('');
+        moreHtml = `
+          <div class="hotel-more-toggle" onclick="Components.toggleMoreOptions(this)">
+            &#9662; ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
+          </div>
+          <div class="hotel-more-list">${moreRows}</div>
+        `;
+      }
+      hotelOptionsHtml = `
+        <div class="hotel-options">${topHtml}</div>
+        ${moreHtml}
+      `;
+    } else {
+      hotelOptionsHtml = `
+        <div class="hotel-price-note">
+          ${Utils.formatCurrency(nightlyRate, 'EUR')} / night ${rooms > 1 ? `&middot; ${rooms} rooms` : ''}
+          <span class="confidence-badge ${isLive ? 'live' : 'default'}">${isLive ? 'live price' : 'estimate'}</span>
+        </div>
+      `;
+    }
+
     card.innerHTML = `
       <div class="card-header" onclick="Components.toggleCard(this)">
         <div class="card-icon">&#127976;</div>
         <div class="card-title">
-          <h4>${hotelNameDisplay}, ${city.name}</h4>
-          <span class="card-subtitle">${city.nights} night${city.nights !== 1 ? 's' : ''} stay &middot; ${Utils.formatCurrency(nightlyRate, 'EUR')}/night</span>
+          <h4>${Utils.escapeHtml(hotelNameDisplay)}, ${Utils.escapeHtml(city.name)}</h4>
+          <span class="card-subtitle">${city.nights} night${city.nights !== 1 ? 's' : ''} stay &middot; ${Utils.formatCurrency(nightlyRate, 'EUR')}/night${rooms > 1 ? ` &middot; ${rooms} rooms` : ''}</span>
           ${schedHtml}
         </div>
         <div class="card-cost" id="city-cost-${index}">${Utils.formatCurrency(nightlyRate * city.nights * rooms, 'EUR')}</div>
@@ -731,10 +779,7 @@ const Components = {
             <label>Nights</label>
             <div id="nights-stepper-${index}"></div>
           </div>
-          <div class="hotel-price-note">
-            ${Utils.formatCurrency(nightlyRate, 'EUR')} / night ${rooms > 1 ? `&middot; ${rooms} rooms` : ''}
-            <span class="confidence-badge ${isLive ? 'live' : 'default'}">${isLive ? 'live price' : 'estimate'}</span>
-          </div>
+          ${hotelOptionsHtml}
           ${mealHtml}
         </div>
       </div>

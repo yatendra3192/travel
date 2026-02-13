@@ -113,6 +113,16 @@ const Utils = {
     return fullPlaceName.split(',')[0].trim();
   },
 
+  escapeHtml(str) {
+    if (typeof str !== 'string') return str;
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  },
+
+  sanitizeColor(c) {
+    if (typeof c !== 'string') return 'inherit';
+    return /^#[0-9a-fA-F]{3,8}$|^[a-zA-Z]+$|^rgba?\([\d\s,.]+\)$/.test(c) ? c : 'inherit';
+  },
+
   // Extract arrival date (YYYY-MM-DD) from a flight offer's arrival ISO datetime
   getArrivalDate(offer) {
     if (!offer?.arrival) return null;

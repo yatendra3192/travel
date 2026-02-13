@@ -61,7 +61,7 @@ async def _scrape_google_flights(
     )
 
     await rate_limit(url)
-    ctx: BrowserContext = await pool.get_context()
+    ctx, ctx_idx = await pool.get_context()
     page: Page = await ctx.new_page()
 
     flights = []
@@ -98,6 +98,7 @@ async def _scrape_google_flights(
         print(f"[flights] Navigation error for {origin}->{destination}: {e}")
     finally:
         await page.close()
+        await pool.release_context(ctx_idx)
 
     return {"flights": sorted(flights, key=lambda f: f["price"]), "carriers": carriers}
 
@@ -229,6 +230,11 @@ async def _parse_flight_item(item, origin: str, dest: str, date: str, idx: int) 
 
         departure_dt = _parse_time_to_iso(date, dep_time_str)
         arrival_dt = _parse_time_to_iso(date, arr_time_str)
+
+        # Skip flights with unparseable departure time
+        if not departure_dt:
+            print(f"[flights] Skipping flight {idx}: could not parse departure time")
+            return None
 
         # --- Duration ---
         dur_match = re.search(r'(\d+)\s*hr(?:\s*(\d+)\s*min)?', full_text)
@@ -459,10 +465,11 @@ async def _parse_flight_item(item, origin: str, dest: str, date: str, idx: int) 
         return None
 
 
-def _parse_time_to_iso(date: str, time_str: str) -> str:
-    """Convert '1:35 AM', '1:35 pm', '1:35 P.M.', or '13:35' + date to ISO datetime string."""
+def _parse_time_to_iso(date: str, time_str: str) -> str | None:
+    """Convert '1:35 AM', '1:35 pm', '1:35 P.M.', or '13:35' + date to ISO datetime string.
+    Returns None if the time cannot be parsed."""
     if not time_str:
-        return f"{date}T12:00:00"
+        return None
 
     ts = time_str.strip()
     # Remove periods (P.M. -> PM) and normalize spaces
@@ -484,4 +491,5 @@ def _parse_time_to_iso(date: str, time_str: str) -> str:
         if 0 <= h <= 23 and 0 <= mi <= 59:
             return f"{date}T{h:02d}:{mi:02d}:00"
 
-    return f"{date}T12:00:00"
+    print(f"[flights] WARNING: Could not parse time '{time_str}' for date {date}")
+    return None

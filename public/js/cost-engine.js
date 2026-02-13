@@ -202,13 +202,14 @@ const CostEngine = {
 
   calcTransfers(plan) {
     let total = 0;
+    const passengers = (plan.adults || 1) + (plan.children || 0);
     for (const t of plan.transfers) {
       if (t.type === 'none') continue;
       switch (t.selectedMode) {
-        case 'taxi': total += t.taxiCost || 0; break;
-        case 'transit': total += t.publicTransportCost || 0; break;
+        case 'taxi': total += t.taxiCost || 0; break; // shared fare
+        case 'transit': total += (t.publicTransportCost || 0) * passengers; break; // per person
         case 'bike': case 'walk': break; // free
-        default: total += t.publicTransportCost || 5; break;
+        default: total += (t.publicTransportCost || 5) * passengers; break;
       }
     }
     return { low: Math.round(total), high: Math.round(total) };

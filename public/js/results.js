@@ -19,13 +19,17 @@ const Results = {
 
     document.getElementById('mobile-details-btn')?.addEventListener('click', () => {
       const sidebar = document.getElementById('cost-sidebar');
-      sidebar.style.display = sidebar.style.display === 'block' ? 'none' : 'block';
-      sidebar.style.position = 'fixed';
-      sidebar.style.inset = '0';
-      sidebar.style.zIndex = '200';
-      sidebar.style.overflow = 'auto';
-      sidebar.style.background = 'var(--color-bg-page)';
-      sidebar.style.padding = '24px';
+      if (sidebar.style.display === 'block') {
+        sidebar.style.cssText = '';
+      } else {
+        sidebar.style.display = 'block';
+        sidebar.style.position = 'fixed';
+        sidebar.style.inset = '0';
+        sidebar.style.zIndex = '200';
+        sidebar.style.overflow = 'auto';
+        sidebar.style.background = 'var(--color-bg-page)';
+        sidebar.style.padding = '24px';
+      }
     });
 
     // Date/time changes just update tripData (recalculate on button click)
@@ -112,8 +116,8 @@ const Results = {
       const mainText = pred.mainText?.text || pred.text?.text || '';
       const secondaryText = pred.secondaryText?.text || '';
       item.innerHTML = `
-        <div class="autocomplete-item-main">${mainText}</div>
-        ${secondaryText ? `<div class="autocomplete-item-sub">${secondaryText}</div>` : ''}
+        <div class="autocomplete-item-main">${Utils.escapeHtml(mainText)}</div>
+        ${secondaryText ? `<div class="autocomplete-item-sub">${Utils.escapeHtml(secondaryText)}</div>` : ''}
       `;
       item.addEventListener('click', () => {
         this._headerSelectPlace(pred, target);
@@ -206,6 +210,13 @@ const Results = {
   },
 
   async generateTripPlan(tripData) {
+    // Abort any in-flight generation
+    if (this._generating) {
+      this._aborted = true;
+    }
+    this._generating = true;
+    this._aborted = false;
+
     this.tripData = tripData;
     this.populateSearchBar(tripData);
 
@@ -237,6 +248,7 @@ const Results = {
         )
       ];
       const iataResults = await Promise.all(iataPromises);
+      if (this._aborted) { this._generating = false; overlay.style.display = 'none'; return; }
       Components.updateLoadingStep(0, 'done');
 
       // Step 2: Build flight legs and search flights + hotel listings (parallel)
@@ -332,6 +344,7 @@ const Results = {
 
       // Wait for all three
       const [flightResults, hotelResults, groundRouteResults] = await Promise.all([flightSearchPromise, hotelSearchPromise, groundRoutePromise]);
+      if (this._aborted) { this._generating = false; overlay.style.display = 'none'; return; }
       Components.updateLoadingStep(1, 'done');
       Components.updateLoadingStep(2, 'done');
 
@@ -365,6 +378,7 @@ const Results = {
         Promise.all(mealCostPromises),
         layoverMealPromise,
       ]);
+      if (this._aborted) { this._generating = false; overlay.style.display = 'none'; return; }
       Components.updateLoadingStep(3, 'done');
 
       // Step 4: Hotel offers for pricing
@@ -413,10 +427,17 @@ const Results = {
       // Trip plan ready
 
     } catch (err) {
+      if (this._aborted) { this._generating = false; return; }
       console.error('Trip generation failed:', err);
       overlay.style.display = 'none';
       const timeline = document.getElementById('results-timeline');
-      timeline.innerHTML = `<div class="error-banner">Something went wrong: ${err.message}. Please try again.</div>`;
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'error-banner';
+      errorDiv.textContent = `Something went wrong: ${err.message}. Please try again.`;
+      timeline.innerHTML = '';
+      timeline.appendChild(errorDiv);
+    } finally {
+      this._generating = false;
     }
   },
 
@@ -571,14 +592,52 @@ const Results = {
   buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, hotelOffers, mealCostResults, layoverMealResult, groundRouteResults) {
     const cities = tripData.destinations.map((dest, i) => {
       const iata = iataResults[i + 1];
-      let hotelBasePrice = CostEngine.getHotelBasePrice(iata.cityCode);
-      let hotelPriceSource = 'estimate';
+      // Build merged hotel options list
+      const hotelOptions = [];
+      const seenIds = new Set();
+      const hotelListMap = {};
+      for (const h of (hotelResults[i]?.hotels || [])) {
+        if (h.hotelId) hotelListMap[h.hotelId] = h;
+      }
+      // Offers first (live pricePerNight)
+      for (const offer of (hotelOffers[i]?.offers || [])) {
+        if (offer.pricePerNight && !seenIds.has(offer.hotelId)) {
+          seenIds.add(offer.hotelId);
+          const listEntry = hotelListMap[offer.hotelId];
+          hotelOptions.push({
+            hotelId: offer.hotelId,
+            name: offer.hotelName || listEntry?.name || 'Hotel',
+            pricePerNight: offer.pricePerNight,
+            roomType: offer.roomType || null,
+            distance: listEntry?.distance?.value || null,
+            source: 'live',
+          });
+        }
+      }
+      // Hotels from list with price not already in offers
+      for (const hotel of (hotelResults[i]?.hotels || [])) {
+        if (hotel.pricePerNight && !seenIds.has(hotel.hotelId)) {
+          seenIds.add(hotel.hotelId);
+          hotelOptions.push({
+            hotelId: hotel.hotelId,
+            name: hotel.name || 'Hotel',
+            pricePerNight: hotel.pricePerNight,
+            roomType: null,
+            distance: hotel.distance?.value || null,
+            source: 'estimate',
+          });
+        }
+      }
+      hotelOptions.sort((a, b) => a.pricePerNight - b.pricePerNight);
+      if (hotelOptions.length > 10) hotelOptions.length = 10;
 
-      if (hotelOffers[i]?.offers?.length > 0) {
-        const avgPrice = hotelOffers[i].offers.reduce((sum, o) => sum + o.pricePerNight, 0)
-          / hotelOffers[i].offers.length;
-        hotelBasePrice = Math.round(avgPrice);
-        hotelPriceSource = 'live';
+      let hotelBasePrice, hotelPriceSource;
+      if (hotelOptions.length > 0) {
+        hotelBasePrice = hotelOptions[0].pricePerNight;
+        hotelPriceSource = hotelOptions[0].source;
+      } else {
+        hotelBasePrice = CostEngine.getHotelBasePrice(iata.cityCode);
+        hotelPriceSource = 'estimate';
       }
 
       // Find first hotel with geoCode for transfer routing
@@ -600,6 +659,7 @@ const Results = {
         hotelBasePrice,
         hotelPriceSource,
         adults: tripData.adults,
+        children: tripData.children,
         hotels: hotelResults[i]?.hotels || [],
         lat: dest.lat,
         lng: dest.lng,
@@ -607,7 +667,9 @@ const Results = {
         airportLng: iata.airportLng || null,
         hotelLat: firstHotel?.geoCode?.latitude || iata.cityCenterLat || dest.lat,
         hotelLng: firstHotel?.geoCode?.longitude || iata.cityCenterLng || dest.lng,
-        hotelName: firstHotel?.name || null,
+        hotelName: hotelOptions.length > 0 ? hotelOptions[0].name : (firstHotel?.name || null),
+        hotelOptions,
+        selectedHotel: hotelOptions[0] || null,
         mealCosts,
       };
     });
@@ -623,12 +685,14 @@ const Results = {
           const dep = new Date(flight.departure);
           const arr = new Date(flight.arrival);
           const durMatch = flight.duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?/);
-          if (!isNaN(dep) && !isNaN(arr) && durMatch) {
+          if (!isNaN(dep.getTime()) && !isNaN(arr.getTime()) && durMatch) {
             const durMins = (parseInt(durMatch[1] || '0') * 60) + parseInt(durMatch[2] || '0');
             const expectedArr = new Date(dep.getTime() + durMins * 60000);
-            const daysAhead = Math.floor((expectedArr - dep) / 86400000);
-            if (daysAhead > 0) {
-              arr.setDate(arr.getDate() + daysAhead);
+            // Compare dates: only correct if arr is on the wrong day
+            const expectedDate = expectedArr.toISOString().split('T')[0];
+            const actualDate = arr.toISOString().split('T')[0];
+            if (expectedDate !== actualDate) {
+              arr.setFullYear(expectedArr.getFullYear(), expectedArr.getMonth(), expectedArr.getDate());
               flight = { ...flight, arrival: arr.toISOString().replace('Z', '').split('.')[0] };
             }
           }
@@ -1146,7 +1210,7 @@ const Results = {
           <div class="card-header">
             <div class="card-icon">&#128205;</div>
             <div class="card-title">
-              <h4>${plan.cities[i].name}</h4>
+              <h4>${Utils.escapeHtml(plan.cities[i].name)}</h4>
               <span class="card-subtitle">Passing through &middot; no overnight stay</span>
             </div>
             <div id="nights-stepper-pass-${i}" style="margin-left:auto"></div>
@@ -1487,8 +1551,8 @@ const Results = {
       overlay.className = 'confirm-overlay';
       overlay.innerHTML = `
         <div class="confirm-popup">
-          <h3>${title}</h3>
-          <p>${message}</p>
+          <h3>${Utils.escapeHtml(title)}</h3>
+          <p>${Utils.escapeHtml(message)}</p>
           <div class="confirm-actions">
             <button class="confirm-btn cancel">Keep Stay</button>
             <button class="confirm-btn confirm">Skip Stay</button>
@@ -1589,6 +1653,35 @@ const Results = {
     this.recalculateAndRenderCost();
   },
 
+  selectHotelOption(cityIndex, optionIndex) {
+    const city = this.plan.cities[cityIndex];
+    if (!city || !city.hotelOptions || !city.hotelOptions[optionIndex]) return;
+
+    const selected = city.hotelOptions[optionIndex];
+    city.selectedHotel = selected;
+    city.hotelBasePrice = selected.pricePerNight;
+    city.hotelName = selected.name;
+
+    // Move selected to top
+    if (optionIndex !== 0) {
+      city.hotelOptions.splice(optionIndex, 1);
+      city.hotelOptions.unshift(selected);
+    }
+
+    // Re-render this city card in-place
+    const oldCard = document.querySelector(`.timeline-card[data-type="city"][data-index="${cityIndex}"]`);
+    if (oldCard) {
+      const newCard = Components.createCityCard(
+        city, cityIndex,
+        (idx, nights) => this.onNightsChange(idx, nights),
+        (idx, type) => this.onHotelTypeChange(idx, type)
+      );
+      oldCard.replaceWith(newCard);
+    }
+
+    this.recalculateAndRenderCost();
+  },
+
   updateMealBreakdown(cityIndex) {
     const city = this.plan.cities[cityIndex];
     if (!city.mealCosts) return;
@@ -1614,7 +1707,7 @@ const Results = {
   onTravelersChange(adults, children) {
     this.plan.adults = adults;
     this.plan.children = children;
-    this.plan.cities.forEach(c => c.adults = adults);
+    this.plan.cities.forEach(c => { c.adults = adults; c.children = children; });
     this.recalculateAndRenderCost();
   },
 

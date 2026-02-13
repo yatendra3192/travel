@@ -5,7 +5,11 @@ const { getCached, setCache } = require('./cache');
 const { getFallbackIata, getNoAirportCity, getNearestAirportByCoords } = require('./iata-data');
 const { getLayoverMealCost, getCityMealCosts } = require('./meal-data');
 
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY || 'AIzaSyC8L_jH9rFRguKUoh1BXdKUaaVLXZT9U1g';
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+if (!GOOGLE_API_KEY) {
+  console.error('FATAL: GOOGLE_API_KEY environment variable is not set.');
+  process.exit(1);
+}
 const PYTHON_API_BASE = process.env.PYTHON_API_URL || 'http://localhost:5000';
 
 const app = express();
@@ -260,11 +264,11 @@ app.get('/api/resolve-iata', async (req, res) => {
       cityName: keyword,
       country: null,
       hasAirport: false,
-      error: `No airport data found for "${keyword}". Using estimates.`
+      error: 'No airport data found. Using estimates.'
     });
   } catch (err) {
     console.error('resolve-iata error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error resolving IATA code' });
   }
 });
 
@@ -382,7 +386,7 @@ app.get('/api/meal-costs', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('meal-costs error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error fetching meal costs' });
   }
 });
 
@@ -487,7 +491,9 @@ app.get('/api/transfer-estimate', async (req, res) => {
       taxiCost: Math.round(taxiRates.baseFare + drivingInfo.distanceKm * taxiRates.perKm),
     } : {
       distanceKm: Math.round(straightDist),
+      distanceText: `~${Math.round(straightDist)} km`,
       duration: `~${Math.round(straightDist / 50 * 60)} min`,
+      durationSec: Math.round(straightDist / 50 * 3600),
       summary: '',
       taxiCost: Math.round(taxiRates.baseFare + Math.round(straightDist) * taxiRates.perKm),
     };
@@ -579,6 +585,7 @@ app.get('/api/transfer-estimate', async (req, res) => {
       transitRoutes.push({
         distanceKm: driving.distanceKm,
         duration: driving.duration,
+        durationSec: driving.durationSec || 0,
         publicTransportCost: Math.max(1, Math.round(driving.distanceKm * ptRate)),
         fareSource: 'estimated',
         summary: 'No transit routes found',
@@ -598,7 +605,7 @@ app.get('/api/transfer-estimate', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('transfer-estimate error:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Internal server error estimating transfer' });
   }
 });
 

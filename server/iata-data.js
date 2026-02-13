@@ -137,6 +137,14 @@ function getFallbackIata(cityName) {
 
   if (CITY_TO_IATA[normalized]) return { ...CITY_TO_IATA[normalized], hasAirport: true };
 
+  // Prefer startsWith matches (more precise)
+  for (const key of Object.keys(CITY_TO_IATA)) {
+    if (key.startsWith(normalized) || normalized.startsWith(key)) {
+      return { ...CITY_TO_IATA[key], hasAirport: true };
+    }
+  }
+
+  // Fall back to substring includes
   for (const key of Object.keys(CITY_TO_IATA)) {
     if (normalized.includes(key) || key.includes(normalized)) {
       return { ...CITY_TO_IATA[key], hasAirport: true };
@@ -152,6 +160,14 @@ function getNoAirportCity(cityName) {
 
   if (NO_AIRPORT_CITIES[normalized]) return NO_AIRPORT_CITIES[normalized];
 
+  // Prefer startsWith matches
+  for (const key of Object.keys(NO_AIRPORT_CITIES)) {
+    if (key.startsWith(normalized) || normalized.startsWith(key)) {
+      return NO_AIRPORT_CITIES[key];
+    }
+  }
+
+  // Fall back to substring includes
   for (const key of Object.keys(NO_AIRPORT_CITIES)) {
     if (normalized.includes(key) || key.includes(normalized)) {
       return NO_AIRPORT_CITIES[key];

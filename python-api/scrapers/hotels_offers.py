@@ -150,7 +150,7 @@ async def _scrape_booking_offers(
     )
 
     await rate_limit(url)
-    ctx: BrowserContext = await pool.get_context()
+    ctx, ctx_idx = await pool.get_context()
     page: Page = await ctx.new_page()
 
     offers = []
@@ -201,6 +201,7 @@ async def _scrape_booking_offers(
         print(f"[hotel_offers] Navigation error: {e}")
     finally:
         await page.close()
+        await pool.release_context(ctx_idx)
 
     return {"offers": offers}
 

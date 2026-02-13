@@ -1187,6 +1187,100 @@
   border-top: 1px solid var(--color-bg-subtle);
 }
 
+/* ── Hotel option rows (city cards) ── */
+.hotel-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.hotel-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: box-shadow 0.15s, border-color 0.15s, background 0.15s, transform 0.15s;
+}
+
+.hotel-option:hover {
+  box-shadow: var(--shadow-sm);
+  border-color: var(--color-primary-light);
+  transform: translateY(-1px);
+}
+
+.hotel-option.selected {
+  border: 2px solid var(--color-primary);
+  background: var(--color-primary-bg);
+  padding: 11px 15px;
+  box-shadow: 0 0 0 3px rgba(15,118,110,0.1);
+}
+
+.hotel-option-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.hotel-option-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.hotel-option-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hotel-option-meta {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+.hotel-option-price {
+  text-align: right;
+  flex-shrink: 0;
+  min-width: 70px;
+}
+
+.hotel-more-toggle {
+  padding: 6px 0 4px;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.hotel-more-toggle:hover {
+  color: var(--color-primary);
+}
+
+.hotel-more-list {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hotel-more-list.expanded {
+  display: flex;
+}
+
 /* ── Responsive: stack flight option on narrow screens ── */
 @media (max-width: 520px) {
   .flight-option {

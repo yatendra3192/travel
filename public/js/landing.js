@@ -84,8 +84,8 @@ const Landing = {
       const secondaryText = pred.secondaryText?.text || '';
 
       item.innerHTML = `
-        <div class="autocomplete-item-main">${mainText}</div>
-        ${secondaryText ? `<div class="autocomplete-item-sub">${secondaryText}</div>` : ''}
+        <div class="autocomplete-item-main">${Utils.escapeHtml(mainText)}</div>
+        ${secondaryText ? `<div class="autocomplete-item-sub">${Utils.escapeHtml(secondaryText)}</div>` : ''}
       `;
 
       item.addEventListener('click', () => {

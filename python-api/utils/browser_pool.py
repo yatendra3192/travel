@@ -12,13 +12,14 @@ from utils.anti_detect import (
 
 
 class BrowserPool:
-    """Manages a pool of Playwright browser contexts."""
+    """Manages a pool of Playwright browser contexts with safe recycling."""
 
     def __init__(self):
         self._playwright = None
         self._browser: Browser | None = None
         self._contexts: list[BrowserContext] = []
         self._request_counts: list[int] = []
+        self._checkout_counts: list[int] = []
         self._lock = asyncio.Lock()
         self._index = 0
         self._ready = False
@@ -38,6 +39,7 @@ class BrowserPool:
             ctx = await self._create_context()
             self._contexts.append(ctx)
             self._request_counts.append(0)
+            self._checkout_counts.append(0)
         self._ready = True
 
     async def _create_context(self) -> BrowserContext:
@@ -49,40 +51,52 @@ class BrowserPool:
             locale="en-US",
             timezone_id="America/New_York",
             java_script_enabled=True,
-            ignore_https_errors=True,
         )
 
         # Block unnecessary resources (only on booking.com to save bandwidth)
         # Google Flights needs full page rendering so we don't block there
-        await ctx.route(
-            "**/*booking.com**",
-            lambda route: (
-                route.abort()
-                if should_block_resource(route.request.url, route.request.resource_type)
-                else route.continue_()
-            ),
-        )
+        async def _block_handler(route):
+            if should_block_resource(route.request.url, route.request.resource_type):
+                await route.abort()
+            else:
+                await route.continue_()
+
+        await ctx.route("**/*booking.com**", _block_handler)
 
         return ctx
 
-    async def get_context(self) -> BrowserContext:
-        """Get a browser context from the pool, recycling if needed."""
+    async def get_context(self) -> tuple[BrowserContext, int]:
+        """Get a browser context from the pool. Returns (context, index) for release."""
         async with self._lock:
             if not self._ready:
                 raise RuntimeError("Browser pool not started")
 
             idx = self._index % BROWSER_POOL_SIZE
             self._index += 1
-
-            # Recycle context if it's been used too many times
             self._request_counts[idx] += 1
-            if self._request_counts[idx] >= CONTEXT_RECYCLE_AFTER:
+            self._checkout_counts[idx] += 1
+
+            return self._contexts[idx], idx
+
+    async def release_context(self, idx: int):
+        """Release a checked-out context. Recycles it if due and no other users."""
+        async with self._lock:
+            if idx < 0 or idx >= len(self._checkout_counts):
+                return
+            self._checkout_counts[idx] -= 1
+
+            # Only recycle when no one else is using this context
+            if (
+                self._checkout_counts[idx] == 0
+                and self._request_counts[idx] >= CONTEXT_RECYCLE_AFTER
+            ):
                 old_ctx = self._contexts[idx]
-                await old_ctx.close()
+                try:
+                    await old_ctx.close()
+                except Exception:
+                    pass
                 self._contexts[idx] = await self._create_context()
                 self._request_counts[idx] = 0
-
-            return self._contexts[idx]
 
     @property
     def is_ready(self) -> bool:

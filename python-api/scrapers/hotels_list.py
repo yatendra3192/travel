@@ -126,7 +126,7 @@ async def _scrape_booking_hotels(
     )
 
     await rate_limit(url)
-    ctx: BrowserContext = await pool.get_context()
+    ctx, ctx_idx = await pool.get_context()
     page: Page = await ctx.new_page()
 
     hotels = []
@@ -171,6 +171,7 @@ async def _scrape_booking_hotels(
         print(f"[hotels_list] Navigation error: {e}")
     finally:
         await page.close()
+        await pool.release_context(ctx_idx)
 
     return {"hotels": hotels, "searchRadius": radius}
 
@@ -246,8 +247,8 @@ async def _parse_hotel_card(card, center_lat: float, center_lng: float) -> dict 
             "name": name,
             "chainCode": None,
             "geoCode": {
-                "latitude": center_lat + (hash(name) % 100 - 50) * 0.001,
-                "longitude": center_lng + (hash(name) % 100 - 50) * 0.001,
+                "latitude": center_lat,
+                "longitude": center_lng,
             },
             "distance": {
                 "value": distance_value or 2.0,
