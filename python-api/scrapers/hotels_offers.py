@@ -12,7 +12,7 @@ from playwright.async_api import BrowserContext, Page
 
 from utils.browser_pool import pool
 from utils.anti_detect import random_delay
-from scrapers.base import rate_limit, retry_with_backoff
+from scrapers.base import rate_limit, retry_with_backoff, logger
 from cache.memory_cache import get_hotels_offers, set_hotels_offers, hotels_list_cache
 from config import PAGE_TIMEOUT
 
@@ -101,6 +101,10 @@ def _build_offers_from_cache(
                     "roomType": "Standard Room",
                     "checkIn": check_in,
                     "checkOut": check_out,
+                    "photoUrl": hotel.get("photoUrl"),
+                    "rating": hotel.get("rating"),
+                    "reviewCount": hotel.get("reviewCount"),
+                    "listingUrl": hotel.get("listingUrl"),
                 })
                 hotel_id_set.discard(hid)
 
@@ -175,6 +179,13 @@ async def _scrape_booking_offers(
 
         await random_delay(1.0, 2.0)
 
+        # Scroll down to trigger lazy-loaded images
+        for _ in range(3):
+            await page.evaluate("window.scrollBy(0, window.innerHeight)")
+            await random_delay(0.3, 0.6)
+        await page.evaluate("window.scrollTo(0, 0)")
+        await random_delay(0.5, 1.0)
+
         # Calculate nights
         try:
             ci = datetime.strptime(check_in, "%Y-%m-%d")
@@ -189,6 +200,9 @@ async def _scrape_booking_offers(
         cards = await page.query_selector_all('div[data-testid="property-card"]')
         if not cards:
             cards = await page.query_selector_all('.sr_property_block, [data-hotelid]')
+
+        if not cards:
+            logger.warning(f"No hotel cards found for offers. Selectors may be stale.")
 
         for card in cards[:25]:
             offer = await _parse_offer_card(card, check_in, check_out, nights)
@@ -252,7 +266,50 @@ async def _parse_offer_card(
         if not price or price < 10:
             return None
 
+        if price > 50000:
+            logger.warning(f"Skipping hotel offer '{name}': total price {price} EUR exceeds upper bound of 50000")
+            return None
+
         price_per_night = round(price / nights, 2)
+
+        if price_per_night > 50000:
+            logger.warning(f"Skipping hotel offer '{name}': price per night {price_per_night} EUR exceeds upper bound of 50000")
+            return None
+
+        # Hotel photo — try multiple selectors, fallback to first img
+        photo_url = None
+        for img_sel in [
+            'img[data-testid="image"]',
+            'a[data-testid="property-card-desktop-single-image"] img',
+            'img[src*="bstatic.com"]',
+        ]:
+            img_el = await card.query_selector(img_sel)
+            if img_el:
+                photo_url = await img_el.get_attribute('src') or await img_el.get_attribute('data-src')
+                if photo_url and photo_url.startswith('http'):
+                    break
+                photo_url = None
+
+        # Listing URL
+        listing_url = None
+        link_el = await card.query_selector('a[data-testid="title-link"], a[data-testid="property-card-desktop-single-image"]')
+        if link_el:
+            href = await link_el.get_attribute('href')
+            if href:
+                listing_url = href if href.startswith('http') else f"https://www.booking.com{href}"
+
+        # Rating + review count from review-score container
+        rating = None
+        review_count = None
+        review_score_el = await card.query_selector('[data-testid="review-score"]')
+        if review_score_el:
+            score_text = (await review_score_el.inner_text()).strip()
+            rating_match = re.search(r'(\d+\.?\d*)', score_text)
+            if rating_match:
+                rating = float(rating_match.group(1))
+            count_match = re.search(r'([\d,]+)\s*review', score_text, re.IGNORECASE)
+            if count_match:
+                review_count = int(count_match.group(1).replace(',', ''))
 
         # Room type
         room_el = await card.query_selector(
@@ -273,6 +330,10 @@ async def _parse_offer_card(
             "roomType": room_type,
             "checkIn": check_in,
             "checkOut": check_out,
+            "photoUrl": photo_url,
+            "rating": rating,
+            "reviewCount": review_count,
+            "listingUrl": listing_url,
         }
 
     except Exception:

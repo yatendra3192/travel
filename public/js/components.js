@@ -4,19 +4,20 @@ const Components = {
     chip.className = 'chip';
     chip.innerHTML = `
       <span>${Utils.escapeHtml(text)}</span>
-      <button type="button" class="chip-remove" title="Remove">&times;</button>
+      <button type="button" class="chip-remove" title="Remove" aria-label="Remove ${Utils.escapeHtml(text)}">&times;</button>
     `;
     chip.querySelector('.chip-remove').addEventListener('click', onRemove);
     return chip;
   },
 
-  createStepper(value, min, max, onChange) {
+  createStepper(value, min, max, onChange, label) {
     const stepper = document.createElement('div');
     stepper.className = 'stepper';
     const minusBtn = document.createElement('button');
     minusBtn.type = 'button';
     minusBtn.className = 'stepper-btn minus';
     minusBtn.textContent = '-';
+    minusBtn.setAttribute('aria-label', label ? `Decrease ${label}` : 'Decrease');
 
     const valueSpan = document.createElement('span');
     valueSpan.className = 'stepper-value';
@@ -26,10 +27,15 @@ const Components = {
     plusBtn.type = 'button';
     plusBtn.className = 'stepper-btn plus';
     plusBtn.textContent = '+';
+    plusBtn.setAttribute('aria-label', label ? `Increase ${label}` : 'Increase');
 
     function update(newVal) {
       const clamped = Utils.clamp(newVal, min, max);
-      valueSpan.textContent = clamped;
+      valueSpan.style.opacity = '0.3';
+      requestAnimationFrame(() => {
+        valueSpan.textContent = clamped;
+        requestAnimationFrame(() => { valueSpan.style.opacity = '1'; });
+      });
       onChange(clamped);
     }
 
@@ -131,7 +137,7 @@ const Components = {
       ? `<span class="card-schedule">${schedStart} &rarr; ${schedEnd}</span>` : '';
 
     card.innerHTML = `
-      <div class="card-header" onclick="Components.toggleCard(this)">
+      <div class="card-header" aria-expanded="false" onclick="Components.toggleCard(this)">
         <div class="card-icon">${icon}</div>
         <div class="card-title">
           <h4>${Utils.escapeHtml(transfer.from)} &rarr; ${Utils.escapeHtml(transfer.to)}</h4>
@@ -305,17 +311,37 @@ const Components = {
 
   selectTransitOption(legIndex, routeIndex) {
     const leg = Results.plan?.flightLegs?.[legIndex];
-    if (!leg || !leg.groundRoutes?.transitRoutes?.[routeIndex]) return;
-    const routes = leg.groundRoutes.transitRoutes;
+    if (!leg) return;
+
+    // Train legs use trainRoutes, flight legs use groundRoutes
+    const isTrain = leg.legType === 'train';
+    const routes = isTrain
+      ? leg.trainRoutes?.transitRoutes
+      : leg.groundRoutes?.transitRoutes;
+    if (!routes?.[routeIndex]) return;
+
     const selected = routes[routeIndex];
     // Move selected to top
     if (routeIndex !== 0) {
       routes.splice(routeIndex, 1);
       routes.unshift(selected);
     }
-    // Re-render card in-place
-    const oldCard = document.querySelector(`.timeline-card[data-type="flight"][data-index="${legIndex}"]`);
-    if (oldCard) oldCard.replaceWith(this.createFlightCard(leg, legIndex));
+
+    if (isTrain) {
+      // Update transitInfo with selected route's fare/duration
+      if (!leg.transitInfo) leg.transitInfo = {};
+      if (selected.fareSource === 'google') leg.transitInfo.estimatedCostEur = selected.publicTransportCost;
+      if (selected.duration) leg.transitInfo.duration = selected.duration;
+      leg.transitInfo.fareSource = selected.fareSource || 'estimate';
+      // Recompute schedule (duration may have changed) and re-render
+      Results._computeTimelineSchedule();
+      const oldCard = document.querySelector(`.timeline-card[data-type="train"][data-index="${legIndex}"]`);
+      if (oldCard) oldCard.replaceWith(this.createTrainCard(leg, legIndex));
+    } else {
+      // Re-render flight card in-place
+      const oldCard = document.querySelector(`.timeline-card[data-type="flight"][data-index="${legIndex}"]`);
+      if (oldCard) oldCard.replaceWith(this.createFlightCard(leg, legIndex));
+    }
     Results.recalculateAndRenderCost();
   },
 
@@ -612,15 +638,36 @@ const Components = {
   },
 
   _buildHotelOptionRow(hotel, cityIndex, optionIndex, isSelected) {
-    const distanceText = hotel.distance ? `${hotel.distance.toFixed(1)} km from center` : '';
+    const distanceText = hotel.distance ? `${hotel.distance.toFixed(1)} km` : '';
     const roomText = hotel.roomType || '';
     const metaParts = [distanceText, roomText].filter(Boolean).join(' \u00b7 ');
 
+    // Photo: show image if available, fall back to emoji icon
+    const photoHtml = hotel.photoUrl
+      ? `<img class="hotel-option-photo" src="${Utils.escapeHtml(hotel.photoUrl)}" alt="${Utils.escapeHtml(hotel.name || 'Hotel')}" loading="lazy" onerror="this.outerHTML='<div class=\\'hotel-option-icon\\'>&#127976;</div>'">`
+      : '<div class="hotel-option-icon">&#127976;</div>';
+
+    // Rating badge
+    let ratingHtml = '';
+    if (hotel.rating) {
+      const reviewText = hotel.reviewCount ? `(${hotel.reviewCount.toLocaleString()})` : '';
+      ratingHtml = `<div class="hotel-option-rating">
+        <span class="rating-score">${hotel.rating.toFixed(1)}</span>
+        ${reviewText ? `<span class="rating-reviews">${reviewText}</span>` : ''}
+      </div>`;
+    }
+
+    // Listing link
+    const linkHtml = hotel.listingUrl
+      ? `<a class="hotel-option-link" href="${Utils.escapeHtml(hotel.listingUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Booking.com">&#8599;</a>`
+      : '';
+
     return `
       <div class="hotel-option${isSelected ? ' selected' : ''}" onclick="Results.selectHotelOption(${cityIndex}, ${optionIndex})">
-        <div class="hotel-option-icon">&#127976;</div>
+        ${photoHtml}
         <div class="hotel-option-info">
-          <div class="hotel-option-name">${Utils.escapeHtml(hotel.name || 'Hotel')}</div>
+          <div class="hotel-option-name">${Utils.escapeHtml(hotel.name || 'Hotel')}${linkHtml}</div>
+          ${ratingHtml}
           ${metaParts ? `<div class="hotel-option-meta">${Utils.escapeHtml(metaParts)}</div>` : ''}
         </div>
         <div class="hotel-option-price">
@@ -630,7 +677,7 @@ const Components = {
       </div>`;
   },
 
-  createCityCard(city, index, onNightsChange, onHotelTypeChange) {
+  createCityCard(city, index, onNightsChange) {
     const card = document.createElement('div');
     card.className = 'timeline-card';
     card.dataset.type = 'city';
@@ -762,7 +809,7 @@ const Components = {
     }
 
     card.innerHTML = `
-      <div class="card-header" onclick="Components.toggleCard(this)">
+      <div class="card-header" aria-expanded="false" onclick="Components.toggleCard(this)">
         <div class="card-icon">&#127976;</div>
         <div class="card-title">
           <h4>${Utils.escapeHtml(hotelNameDisplay)}, ${Utils.escapeHtml(city.name)}</h4>
@@ -787,7 +834,7 @@ const Components = {
 
     const stepperContainer = card.querySelector(`#nights-stepper-${index}`);
     stepperContainer.appendChild(
-      Components.createStepper(city.nights, 0, 14, (val) => onNightsChange(index, val))
+      Components.createStepper(city.nights, 0, 14, (val) => onNightsChange(index, val), 'nights')
     );
 
     return card;
@@ -801,49 +848,80 @@ const Components = {
 
     const transit = leg.transitInfo || {};
     const costPerPerson = transit.estimatedCostEur || 15;
+    const routes = leg.trainRoutes?.transitRoutes || [];
 
     const trainStart = Utils.formatDateTimeFromDate(leg.scheduleStart);
     const trainEnd = Utils.formatDateTimeFromDate(leg.scheduleEnd);
     const trainSchedHtml = (trainStart && trainEnd)
       ? `<span class="card-schedule">${trainStart} &rarr; ${trainEnd}</span>` : '';
 
-    card.innerHTML = `
-      <div class="card-header" onclick="Components.toggleCard(this)">
-        <div class="card-icon">&#128646;</div>
-        <div class="card-title">
-          <h4>${leg.fromName || leg.from} &rarr; ${leg.toName}</h4>
-          <span class="card-subtitle">
-            ${transit.duration || 'Train/Bus'} &middot; ${Utils.formatDateShort(leg.date)}
-          </span>
-          ${trainSchedHtml}
+    // When we have Google Maps transit routes, show them like flight options
+    if (routes.length > 0) {
+      const topHtml = this._buildTransitOptionRow(routes[0], index, 0, true);
+      let moreHtml = '';
+      const remaining = routes.slice(1);
+      if (remaining.length > 0) {
+        const moreRows = remaining.map((r, ri) => this._buildTransitOptionRow(r, index, ri + 1, false)).join('');
+        moreHtml = `
+          <div class="flight-more-toggle" onclick="Components.toggleMoreOptions(this)">
+            &#9662; ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
+          </div>
+          <div class="flight-more-list">${moreRows}</div>
+        `;
+      }
+
+      card.innerHTML = `
+        <div class="flight-card-header">
+          <div class="card-icon">&#128646;</div>
+          <div class="card-title">
+            <h4>${leg.fromName || leg.from} &rarr; ${leg.toName}</h4>
+            <span class="card-subtitle">Train/Bus &middot; ${Utils.formatDateShort(leg.date)}</span>
+            ${trainSchedHtml}
+          </div>
         </div>
-        <div class="card-cost">${Utils.formatCurrency(costPerPerson, 'EUR')}<br>
-          <span style="font-size:0.72rem;font-weight:400;color:var(--color-text-secondary)">per person</span>
+        <div class="flight-options">${topHtml}</div>
+        ${moreHtml}
+      `;
+    } else {
+      // Fallback: static card when no transit data
+      card.innerHTML = `
+        <div class="card-header" aria-expanded="false" onclick="Components.toggleCard(this)">
+          <div class="card-icon">&#128646;</div>
+          <div class="card-title">
+            <h4>${leg.fromName || leg.from} &rarr; ${leg.toName}</h4>
+            <span class="card-subtitle">
+              ${transit.duration || 'Train/Bus'} &middot; ${Utils.formatDateShort(leg.date)}
+            </span>
+            ${trainSchedHtml}
+          </div>
+          <div class="card-cost">${Utils.formatCurrency(costPerPerson, 'EUR')}<br>
+            <span style="font-size:0.72rem;font-weight:400;color:var(--color-text-secondary)">per person</span>
+          </div>
+          <span class="expand-arrow">&#9660;</span>
         </div>
-        <span class="expand-arrow">&#9660;</span>
-      </div>
-      <div class="card-body">
-        <div class="card-detail-row">
-          <span class="card-detail-label">Transport</span>
-          <span class="card-detail-value">Train / Bus</span>
+        <div class="card-body">
+          <div class="card-detail-row">
+            <span class="card-detail-label">Transport</span>
+            <span class="card-detail-value">Train / Bus</span>
+          </div>
+          <div class="card-detail-row">
+            <span class="card-detail-label">Duration</span>
+            <span class="card-detail-value">${transit.duration || 'Varies'}</span>
+          </div>
+          <div class="card-detail-row">
+            <span class="card-detail-label">Distance</span>
+            <span class="card-detail-value">${transit.distanceKm ? `~${transit.distanceKm} km` : 'Varies'}</span>
+          </div>
+          <div class="card-detail-row">
+            <span class="card-detail-label">Est. cost per person</span>
+            <span class="card-detail-value">${Utils.formatCurrency(costPerPerson, 'EUR')}</span>
+          </div>
+          <div class="hotel-price-note" style="margin-top:8px;">
+            No direct flights available. Train/bus is the recommended route.
+          </div>
         </div>
-        <div class="card-detail-row">
-          <span class="card-detail-label">Duration</span>
-          <span class="card-detail-value">${transit.duration || 'Varies'}</span>
-        </div>
-        <div class="card-detail-row">
-          <span class="card-detail-label">Distance</span>
-          <span class="card-detail-value">${transit.distanceKm ? `~${transit.distanceKm} km` : 'Varies'}</span>
-        </div>
-        <div class="card-detail-row">
-          <span class="card-detail-label">Est. cost per person</span>
-          <span class="card-detail-value">${Utils.formatCurrency(costPerPerson, 'EUR')}</span>
-        </div>
-        <div class="hotel-price-note" style="margin-top:8px;">
-          No direct flights available. Train/bus is the recommended route.
-        </div>
-      </div>
-    `;
+      `;
+    }
     return card;
   },
 
@@ -854,10 +932,43 @@ const Components = {
   },
 
   toggleCard(headerEl) {
-    const isExpanded = headerEl.classList.contains('expanded');
-    headerEl.classList.toggle('expanded');
     const body = headerEl.nextElementSibling;
-    if (body) body.classList.toggle('expanded');
+    if (!body) return;
+    const isExpanded = headerEl.classList.contains('expanded');
+
+    if (isExpanded) {
+      // Collapse: set explicit max-height first, then animate to 0
+      body.style.maxHeight = body.scrollHeight + 'px';
+      body.offsetHeight; // force reflow
+      requestAnimationFrame(() => {
+        body.style.maxHeight = '0';
+        body.style.opacity = '0';
+        body.style.paddingTop = '0';
+      });
+      headerEl.classList.remove('expanded');
+      headerEl.setAttribute('aria-expanded', 'false');
+      body.classList.remove('expanded');
+      // Clean up inline styles after transition
+      const onEnd = () => {
+        body.style.maxHeight = '';
+        body.style.opacity = '';
+        body.style.paddingTop = '';
+        body.removeEventListener('transitionend', onEnd);
+      };
+      body.addEventListener('transitionend', onEnd, { once: true });
+    } else {
+      // Expand: set expanded class and animate to scrollHeight
+      headerEl.classList.add('expanded');
+      headerEl.setAttribute('aria-expanded', 'true');
+      body.classList.add('expanded');
+      body.style.maxHeight = body.scrollHeight + 'px';
+      // Remove inline max-height after transition so content can resize
+      const onEnd = () => {
+        body.style.maxHeight = '';
+        body.removeEventListener('transitionend', onEnd);
+      };
+      body.addEventListener('transitionend', onEnd, { once: true });
+    }
   },
 
   renderLoadingSteps(steps) {

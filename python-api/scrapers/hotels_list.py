@@ -10,7 +10,7 @@ from playwright.async_api import BrowserContext, Page
 
 from utils.browser_pool import pool
 from utils.anti_detect import random_delay
-from scrapers.base import rate_limit, retry_with_backoff
+from scrapers.base import rate_limit, retry_with_backoff, logger
 from cache.memory_cache import get_hotels_list, set_hotels_list
 from config import PAGE_TIMEOUT
 
@@ -153,6 +153,13 @@ async def _scrape_booking_hotels(
 
         await random_delay(1.0, 2.0)
 
+        # Scroll down to trigger lazy-loaded images
+        for _ in range(3):
+            await page.evaluate("window.scrollBy(0, window.innerHeight)")
+            await random_delay(0.3, 0.6)
+        await page.evaluate("window.scrollTo(0, 0)")
+        await random_delay(0.5, 1.0)
+
         # Parse hotel cards
         cards = await page.query_selector_all(
             'div[data-testid="property-card"]'
@@ -161,6 +168,9 @@ async def _scrape_booking_hotels(
         if not cards:
             # Try legacy selectors
             cards = await page.query_selector_all('.sr_property_block, [data-hotelid]')
+
+        if not cards:
+            logger.warning(f"No hotel cards found. Selectors may be stale. URL: {url[:100]}")
 
         for card in cards[:50]:
             hotel = await _parse_hotel_card(card, latitude, longitude)
@@ -209,6 +219,43 @@ async def _parse_hotel_card(card, center_lat: float, center_lng: float) -> dict 
                     val /= 1000
                 distance_value = round(val, 1)
 
+        # Hotel photo — try multiple selectors
+        photo_url = None
+        for img_sel in [
+            'img[data-testid="image"]',
+            'a[data-testid="property-card-desktop-single-image"] img',
+            'img[src*="bstatic.com"]',
+        ]:
+            img_el = await card.query_selector(img_sel)
+            if img_el:
+                photo_url = await img_el.get_attribute('src') or await img_el.get_attribute('data-src')
+                if photo_url and photo_url.startswith('http'):
+                    break
+                photo_url = None
+
+        # Listing URL
+        listing_url = None
+        link_el = await card.query_selector('a[data-testid="title-link"], a[data-testid="property-card-desktop-single-image"]')
+        if link_el:
+            href = await link_el.get_attribute('href')
+            if href:
+                listing_url = href if href.startswith('http') else f"https://www.booking.com{href}"
+
+        # Rating + review count from review-score container
+        rating = None
+        review_count = None
+        review_score_el = await card.query_selector('[data-testid="review-score"]')
+        if review_score_el:
+            score_text = (await review_score_el.inner_text()).strip()
+            # Extract rating (first decimal number)
+            rating_match = re.search(r'(\d+\.?\d*)', score_text)
+            if rating_match:
+                rating = float(rating_match.group(1))
+            # Extract review count
+            count_match = re.search(r'([\d,]+)\s*review', score_text, re.IGNORECASE)
+            if count_match:
+                review_count = int(count_match.group(1).replace(',', ''))
+
         # Price - extract from card for use by offers endpoint
         price = None
         price_el = await card.query_selector(
@@ -242,6 +289,11 @@ async def _parse_hotel_card(card, center_lat: float, center_lng: float) -> dict 
                 except Exception:
                     continue
 
+        # Validate price bounds
+        if price is not None and (price <= 0 or price > 50000):
+            logger.warning(f"Skipping hotel '{name}': price {price} EUR outside valid range (0-50000)")
+            price = None
+
         return {
             "hotelId": hotel_id,
             "name": name,
@@ -255,6 +307,10 @@ async def _parse_hotel_card(card, center_lat: float, center_lng: float) -> dict 
                 "unit": "KM",
             },
             "pricePerNight": price,
+            "photoUrl": photo_url,
+            "rating": rating,
+            "reviewCount": review_count,
+            "listingUrl": listing_url,
         }
 
     except Exception:

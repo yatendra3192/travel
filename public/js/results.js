@@ -13,24 +13,43 @@ const Results = {
   plan: null,
   tripData: null,
   _sessionToken: null,
+  _abortController: null,
+  _costRecalcTimer: null,
 
   init() {
     document.getElementById('back-btn').addEventListener('click', () => App.goBack());
 
+    // Bottom sheet toggle
     document.getElementById('mobile-details-btn')?.addEventListener('click', () => {
-      const sidebar = document.getElementById('cost-sidebar');
-      if (sidebar.style.display === 'block') {
-        sidebar.style.cssText = '';
-      } else {
-        sidebar.style.display = 'block';
-        sidebar.style.position = 'fixed';
-        sidebar.style.inset = '0';
-        sidebar.style.zIndex = '200';
-        sidebar.style.overflow = 'auto';
-        sidebar.style.background = 'var(--color-bg-page)';
-        sidebar.style.padding = '24px';
-      }
+      const bar = document.getElementById('mobile-cost-bar');
+      bar.classList.toggle('expanded');
     });
+
+    // Bottom sheet touch drag support
+    const handle = document.getElementById('bottom-sheet-handle');
+    if (handle) {
+      let startY = 0;
+      let dragging = false;
+      handle.addEventListener('touchstart', (e) => {
+        startY = e.touches[0].clientY;
+        dragging = true;
+      }, { passive: true });
+      handle.addEventListener('touchmove', (e) => {
+        if (!dragging) return;
+      }, { passive: true });
+      handle.addEventListener('touchend', (e) => {
+        if (!dragging) return;
+        dragging = false;
+        const endY = e.changedTouches[0].clientY;
+        const diff = endY - startY;
+        const bar = document.getElementById('mobile-cost-bar');
+        if (diff > 50) {
+          bar.classList.remove('expanded');
+        } else if (diff < -50) {
+          bar.classList.add('expanded');
+        }
+      }, { passive: true });
+    }
 
     // Date/time changes just update tripData (recalculate on button click)
     document.getElementById('search-bar-date')?.addEventListener('change', (e) => {
@@ -44,7 +63,15 @@ const Results = {
     // Recalculate button
     document.getElementById('header-recalc-btn')?.addEventListener('click', async () => {
       if (!this.tripData || this.tripData.destinations.length === 0) return;
-      await this.generateTripPlan(this.tripData);
+      const btn = document.getElementById('header-recalc-btn');
+      btn.disabled = true;
+      btn.textContent = 'Calculating...';
+      try {
+        await this.generateTripPlan(this.tripData);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Recalculate';
+      }
     });
 
     // Close dropdowns on outside click
@@ -202,18 +229,20 @@ const Results = {
     adultsContainer.innerHTML = '';
     childrenContainer.innerHTML = '';
     adultsContainer.appendChild(
-      Components.createStepper(adults, 1, 9, (val) => this.onTravelersChange(val, this.plan?.children || 0))
+      Components.createStepper(adults, 1, 9, (val) => this.onTravelersChange(val, this.plan?.children || 0), 'adults')
     );
     childrenContainer.appendChild(
-      Components.createStepper(children, 0, 6, (val) => this.onTravelersChange(this.plan?.adults || 2, val))
+      Components.createStepper(children, 0, 6, (val) => this.onTravelersChange(this.plan?.adults || 2, val), 'children')
     );
   },
 
   async generateTripPlan(tripData) {
     // Abort any in-flight generation
-    if (this._generating) {
-      this._aborted = true;
+    if (this._abortController) {
+      this._abortController.abort();
     }
+    this._abortController = new AbortController();
+    const abortSignal = this._abortController.signal;
     this._generating = true;
     this._aborted = false;
 
@@ -248,7 +277,7 @@ const Results = {
         )
       ];
       const iataResults = await Promise.all(iataPromises);
-      if (this._aborted) { this._generating = false; overlay.style.display = 'none'; return; }
+      if (abortSignal.aborted) { this._generating = false; overlay.style.display = 'none'; return; }
       Components.updateLoadingStep(0, 'done');
 
       // Step 2: Build flight legs and search flights + hotel listings (parallel)
@@ -342,9 +371,20 @@ const Results = {
         })
       );
 
-      // Wait for all three
-      const [flightResults, hotelResults, groundRouteResults] = await Promise.all([flightSearchPromise, hotelSearchPromise, groundRoutePromise]);
-      if (this._aborted) { this._generating = false; overlay.style.display = 'none'; return; }
+      // Fetch transit routes for train legs (airport city → no-airport city)
+      const trainRoutePromise = Promise.all(
+        flightLegs.map((leg) => {
+          if (leg.legType !== 'train') return Promise.resolve(null);
+          const f = leg._grFrom, t = leg._grTo;
+          if (!f?.lat || !f?.lng || !t?.lat || !t?.lng) return Promise.resolve(null);
+          return Api.getTransferEstimate(f.lat, f.lng, t.lat, t.lng, t.country)
+            .catch(() => null);
+        })
+      );
+
+      // Wait for all four
+      const [flightResults, hotelResults, groundRouteResults, trainRouteResults] = await Promise.all([flightSearchPromise, hotelSearchPromise, groundRoutePromise, trainRoutePromise]);
+      if (abortSignal.aborted) { this._generating = false; overlay.style.display = 'none'; return; }
       Components.updateLoadingStep(1, 'done');
       Components.updateLoadingStep(2, 'done');
 
@@ -378,7 +418,7 @@ const Results = {
         Promise.all(mealCostPromises),
         layoverMealPromise,
       ]);
-      if (this._aborted) { this._generating = false; overlay.style.display = 'none'; return; }
+      if (abortSignal.aborted) { this._generating = false; overlay.style.display = 'none'; return; }
       Components.updateLoadingStep(3, 'done');
 
       // Step 4: Hotel offers for pricing
@@ -389,7 +429,8 @@ const Results = {
           if (hotels.length === 0) return Promise.resolve({ offers: [] });
           const sampleIds = hotels.slice(0, 20).map(h => h.hotelId);
           const checkIn = this.getCityCheckIn(tripData, iataResults, i);
-          const checkOut = Utils.addDays(checkIn, 1);
+          const cityNights = tripData.destinations[i].nights || 1;
+          const checkOut = Utils.addDays(checkIn, Math.max(1, cityNights));
           return Api.getHotelOffers(sampleIds, checkIn, checkOut, tripData.adults)
             .catch(() => ({ offers: [] }));
         })
@@ -398,7 +439,7 @@ const Results = {
 
       // Step 5: Transfer costs via Google Directions (now with actual hotel coords + bidirectional)
       Components.updateLoadingStep(5, 'active');
-      this.plan = this.buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, hotelOffers, mealCostResults, layoverMealResult, groundRouteResults);
+      this.plan = this.buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, hotelOffers, mealCostResults, layoverMealResult, groundRouteResults, trainRouteResults);
 
       // Re-fetch flights for legs whose dates changed after arrival-date correction
       const legsToRefetch = [];
@@ -427,13 +468,14 @@ const Results = {
       // Trip plan ready
 
     } catch (err) {
-      if (this._aborted) { this._generating = false; return; }
+      if (abortSignal.aborted) { this._generating = false; return; }
       console.error('Trip generation failed:', err);
       overlay.style.display = 'none';
+      this._generating = false;
       const timeline = document.getElementById('results-timeline');
       const errorDiv = document.createElement('div');
       errorDiv.className = 'error-banner';
-      errorDiv.textContent = `Something went wrong: ${err.message}. Please try again.`;
+      errorDiv.innerHTML = `Something went wrong: ${Utils.escapeHtml(err.message)}. Please try again.<br><button onclick="Results.generateTripPlan(Results.tripData)" class="btn-primary" style="margin-top:12px;padding:8px 24px;">Retry</button>`;
       timeline.innerHTML = '';
       timeline.appendChild(errorDiv);
     } finally {
@@ -589,7 +631,7 @@ const Results = {
     return date;
   },
 
-  buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, hotelOffers, mealCostResults, layoverMealResult, groundRouteResults) {
+  buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, hotelOffers, mealCostResults, layoverMealResult, groundRouteResults, trainRouteResults) {
     const cities = tripData.destinations.map((dest, i) => {
       const iata = iataResults[i + 1];
       // Build merged hotel options list
@@ -610,6 +652,10 @@ const Results = {
             pricePerNight: offer.pricePerNight,
             roomType: offer.roomType || null,
             distance: listEntry?.distance?.value || null,
+            photoUrl: offer.photoUrl || listEntry?.photoUrl || null,
+            rating: offer.rating ?? listEntry?.rating ?? null,
+            reviewCount: offer.reviewCount ?? listEntry?.reviewCount ?? null,
+            listingUrl: offer.listingUrl || listEntry?.listingUrl || null,
             source: 'live',
           });
         }
@@ -624,6 +670,10 @@ const Results = {
             pricePerNight: hotel.pricePerNight,
             roomType: null,
             distance: hotel.distance?.value || null,
+            photoUrl: hotel.photoUrl || null,
+            rating: hotel.rating ?? null,
+            reviewCount: hotel.reviewCount ?? null,
+            listingUrl: hotel.listingUrl || null,
             source: 'estimate',
           });
         }
@@ -688,12 +738,13 @@ const Results = {
           if (!isNaN(dep.getTime()) && !isNaN(arr.getTime()) && durMatch) {
             const durMins = (parseInt(durMatch[1] || '0') * 60) + parseInt(durMatch[2] || '0');
             const expectedArr = new Date(dep.getTime() + durMins * 60000);
-            // Compare dates: only correct if arr is on the wrong day
-            const expectedDate = expectedArr.toISOString().split('T')[0];
-            const actualDate = arr.toISOString().split('T')[0];
+            // Compare local dates (not UTC) to avoid timezone shift issues
+            const expectedDate = `${expectedArr.getFullYear()}-${String(expectedArr.getMonth()+1).padStart(2,'0')}-${String(expectedArr.getDate()).padStart(2,'0')}`;
+            const actualDate = `${arr.getFullYear()}-${String(arr.getMonth()+1).padStart(2,'0')}-${String(arr.getDate()).padStart(2,'0')}`;
             if (expectedDate !== actualDate) {
               arr.setFullYear(expectedArr.getFullYear(), expectedArr.getMonth(), expectedArr.getDate());
-              flight = { ...flight, arrival: arr.toISOString().replace('Z', '').split('.')[0] };
+              const correctedArr = `${arr.getFullYear()}-${String(arr.getMonth()+1).padStart(2,'0')}-${String(arr.getDate()).padStart(2,'0')}T${String(arr.getHours()).padStart(2,'0')}:${String(arr.getMinutes()).padStart(2,'0')}:00`;
+              flight = { ...flight, arrival: correctedArr };
             }
           }
         }
@@ -711,6 +762,28 @@ const Results = {
         });
         return { ...flight, layovers: enrichedLayovers };
       });
+
+      // Enrich train legs with Google Maps transit data
+      if (leg.legType === 'train' && trainRouteResults?.[i]) {
+        const trainData = trainRouteResults[i];
+        const transitRoutes = trainData.transitRoutes || [];
+        const bestRoute = transitRoutes[0];
+        const enrichedTransit = { ...leg.transitInfo };
+        if (bestRoute) {
+          if (bestRoute.fareSource === 'google') enrichedTransit.estimatedCostEur = bestRoute.publicTransportCost;
+          if (bestRoute.duration) enrichedTransit.duration = bestRoute.duration;
+          enrichedTransit.fareSource = bestRoute.fareSource || 'estimate';
+        }
+        return {
+          ...leg,
+          trainRoutes: trainData,
+          transitInfo: enrichedTransit,
+          offers: [],
+          selectedOffer: null,
+          groundRoutes: null,
+          selectedMode: null,
+        };
+      }
 
       return {
         ...leg,
@@ -853,9 +926,11 @@ const Results = {
           if (isForThisCity) break;
           continue;
         } else if (leg.legType === 'train') {
-          // Train: starts at cursor, duration from transitInfo
+          // Train: prefer selected transit route duration, fall back to transitInfo
           leg.scheduleStart = new Date(cursor);
-          const trainDur = Utils.parseDurationMins(leg.transitInfo?.duration);
+          const bestTransit = leg.trainRoutes?.transitRoutes?.[0];
+          const trainDurSec = bestTransit?.durationSec;
+          const trainDur = trainDurSec ? Math.round(trainDurSec / 60) : Utils.parseDurationMins(leg.transitInfo?.duration);
           cursor = Utils.addMinutesToDate(cursor, trainDur);
           leg.scheduleEnd = new Date(cursor);
         } else if (leg.selectedOffer?.departure) {
@@ -940,7 +1015,9 @@ const Results = {
         returnLeg.scheduleEnd = new Date(cursor);
       } else if (returnLeg.legType === 'train') {
         returnLeg.scheduleStart = new Date(cursor);
-        const trainDur = Utils.parseDurationMins(returnLeg.transitInfo?.duration);
+        const bestTransit = returnLeg.trainRoutes?.transitRoutes?.[0];
+        const trainDurSec = bestTransit?.durationSec;
+        const trainDur = trainDurSec ? Math.round(trainDurSec / 60) : Utils.parseDurationMins(returnLeg.transitInfo?.duration);
         cursor = Utils.addMinutesToDate(cursor, trainDur);
         returnLeg.scheduleEnd = new Date(cursor);
       } else if (returnLeg.selectedOffer?.departure) {
@@ -1151,6 +1228,14 @@ const Results = {
 
   renderTimeline() {
     const container = document.getElementById('results-timeline');
+
+    // Save expanded card state before re-render
+    const expandedCards = new Set();
+    container.querySelectorAll('.card-header.expanded').forEach(h => {
+      const card = h.closest('.timeline-card');
+      if (card) expandedCards.add(`${card.dataset.type}-${card.dataset.index}`);
+    });
+
     container.innerHTML = '';
 
     // Compute schedule times for all cards before rendering
@@ -1158,10 +1243,20 @@ const Results = {
 
     const plan = this.plan;
 
+    // Stagger animation counter
+    let staggerIdx = 0;
+    function appendWithStagger(el) {
+      if (el.classList && el.classList.contains('timeline-card')) {
+        el.style.animationDelay = `${staggerIdx * 60}ms`;
+        staggerIdx++;
+      }
+      container.appendChild(el);
+    }
+
     // Home to airport transfer (skip if type 'none' — direct drive cases)
     if (plan.transfers[0] && plan.transfers[0].type !== 'none') {
-      container.appendChild(Components.createTransferCard(plan.transfers[0], 0));
-      container.appendChild(Components.createConnector());
+      appendWithStagger(Components.createTransferCard(plan.transfers[0], 0));
+      appendWithStagger(Components.createConnector());
     }
 
     // Render all legs (flights, trains, transfers, city stays) in order
@@ -1178,12 +1273,12 @@ const Results = {
           // Same-airport: no flight card needed, just advance
           legIdx++;
         } else if (leg.legType === 'train') {
-          container.appendChild(Components.createTrainCard(leg, legIdx));
-          container.appendChild(Components.createConnector());
+          appendWithStagger(Components.createTrainCard(leg, legIdx));
+          appendWithStagger(Components.createConnector());
           legIdx++;
         } else {
-          container.appendChild(Components.createFlightCard(leg, legIdx));
-          container.appendChild(Components.createConnector());
+          appendWithStagger(Components.createFlightCard(leg, legIdx));
+          appendWithStagger(Components.createConnector());
           legIdx++;
         }
 
@@ -1195,8 +1290,8 @@ const Results = {
         const arrivalTransferIdx = 1 + i * 2;
         const arrTransfer = plan.transfers[arrivalTransferIdx];
         if (arrTransfer && arrTransfer.type !== 'none') {
-          container.appendChild(Components.createTransferCard(arrTransfer, arrivalTransferIdx));
-          container.appendChild(Components.createConnector());
+          appendWithStagger(Components.createTransferCard(arrTransfer, arrivalTransferIdx));
+          appendWithStagger(Components.createConnector());
         }
       }
 
@@ -1218,28 +1313,27 @@ const Results = {
         `;
         const stepperSlot = passCard.querySelector(`#nights-stepper-pass-${i}`);
         stepperSlot.appendChild(
-          Components.createStepper(0, 0, 14, (val) => this.onNightsChange(i, val))
+          Components.createStepper(0, 0, 14, (val) => this.onNightsChange(i, val), 'nights')
         );
-        container.appendChild(passCard);
-        container.appendChild(Components.createConnector());
+        appendWithStagger(passCard);
+        appendWithStagger(Components.createConnector());
       } else {
         // City stay card
-        container.appendChild(
+        appendWithStagger(
           Components.createCityCard(
             plan.cities[i], i,
-            (idx, nights) => this.onNightsChange(idx, nights),
-            (idx, type) => this.onHotelTypeChange(idx, type)
+            (idx, nights) => this.onNightsChange(idx, nights)
           )
         );
-        container.appendChild(Components.createConnector());
+        appendWithStagger(Components.createConnector());
 
         // Hotel → Station/Airport transfer (departure) — skip 'none' type
         {
           const departureTransferIdx = 1 + i * 2 + 1;
           const depTransfer = plan.transfers[departureTransferIdx];
           if (depTransfer && depTransfer.type !== 'none') {
-            container.appendChild(Components.createTransferCard(depTransfer, departureTransferIdx));
-            container.appendChild(Components.createConnector());
+            appendWithStagger(Components.createTransferCard(depTransfer, departureTransferIdx));
+            appendWithStagger(Components.createConnector());
           }
         }
       }
@@ -1250,19 +1344,36 @@ const Results = {
     if (returnLeg.legType === 'skip') {
       // Same airport — no flight card for return
     } else if (returnLeg.legType === 'train') {
-      container.appendChild(Components.createTrainCard(returnLeg, plan.flightLegs.length - 1));
-      container.appendChild(Components.createConnector());
+      appendWithStagger(Components.createTrainCard(returnLeg, plan.flightLegs.length - 1));
+      appendWithStagger(Components.createConnector());
     } else {
-      container.appendChild(Components.createFlightCard(returnLeg, plan.flightLegs.length - 1));
-      container.appendChild(Components.createConnector());
+      appendWithStagger(Components.createFlightCard(returnLeg, plan.flightLegs.length - 1));
+      appendWithStagger(Components.createConnector());
     }
 
     // Airport to home transfer (or direct drive home)
     const lastTransferIdx = plan.transfers.length - 1;
     const lastTransfer = plan.transfers[lastTransferIdx];
     if (lastTransfer && lastTransfer.type !== 'none') {
-      container.appendChild(Components.createTransferCard(lastTransfer, lastTransferIdx));
+      appendWithStagger(Components.createTransferCard(lastTransfer, lastTransferIdx));
     }
+
+    // Restore expanded card state
+    expandedCards.forEach(key => {
+      const [type, index] = key.split('-');
+      const card = container.querySelector(`.timeline-card[data-type="${type}"][data-index="${index}"]`);
+      if (card) {
+        const header = card.querySelector('.card-header');
+        const body = card.querySelector('.card-body');
+        if (header && body) {
+          header.classList.add('expanded');
+          body.classList.add('expanded');
+          body.style.maxHeight = body.scrollHeight + 'px';
+          body.style.opacity = '1';
+          body.style.paddingTop = '';
+        }
+      }
+    });
   },
 
   async onNightsChange(cityIndex, nights) {
@@ -1614,7 +1725,7 @@ const Results = {
       // City check-in is the arrival date of the flight, not the departure date
       plan.cities[i].checkInDate = arrivalDate;
       // Find the leg that just arrived at this city and store arrival time
-      const arrivedLeg = plan.flightLegs[legIdx - 1];
+      const arrivedLeg = legIdx > 0 ? plan.flightLegs[legIdx - 1] : null;
       plan.cities[i].arrivalTime = arrivedLeg?.selectedOffer?.arrival || null;
       // Next departure = arrival date + nights stayed
       currentDate = Utils.addDays(arrivalDate, plan.cities[i].nights);
@@ -1648,11 +1759,6 @@ const Results = {
     }));
   },
 
-  onHotelTypeChange(cityIndex, type) {
-    // No-op — hotel type pills removed
-    this.recalculateAndRenderCost();
-  },
-
   selectHotelOption(cityIndex, optionIndex) {
     const city = this.plan.cities[cityIndex];
     if (!city || !city.hotelOptions || !city.hotelOptions[optionIndex]) return;
@@ -1668,15 +1774,52 @@ const Results = {
       city.hotelOptions.unshift(selected);
     }
 
+    // Update adjacent transfer labels to reflect new hotel name
+    const newHotelLabel = selected.name ? `${selected.name}, ${city.name}` : `${city.name} Hotel`;
+    const arrIdx = 1 + cityIndex * 2;
+    const depIdx = 1 + cityIndex * 2 + 1;
+    if (this.plan.transfers[arrIdx] && this.plan.transfers[arrIdx].type !== 'none') {
+      this.plan.transfers[arrIdx].to = newHotelLabel;
+    }
+    if (this.plan.transfers[depIdx] && this.plan.transfers[depIdx].type !== 'none') {
+      this.plan.transfers[depIdx].from = newHotelLabel;
+    }
+    // If last city, also update the final transfer (direct-drive home uses hotel label)
+    if (cityIndex === this.plan.cities.length - 1) {
+      const lastIdx = this.plan.transfers.length - 1;
+      const lastTransfer = this.plan.transfers[lastIdx];
+      if (lastTransfer && lastTransfer.type === 'direct-drive') {
+        lastTransfer.from = newHotelLabel;
+      }
+    }
+
     // Re-render this city card in-place
     const oldCard = document.querySelector(`.timeline-card[data-type="city"][data-index="${cityIndex}"]`);
     if (oldCard) {
       const newCard = Components.createCityCard(
         city, cityIndex,
-        (idx, nights) => this.onNightsChange(idx, nights),
-        (idx, type) => this.onHotelTypeChange(idx, type)
+        (idx, nights) => this.onNightsChange(idx, nights)
       );
       oldCard.replaceWith(newCard);
+    }
+
+    // Re-render adjacent transfer cards with updated hotel name
+    if (this.plan.transfers[arrIdx] && this.plan.transfers[arrIdx].type !== 'none') {
+      const oldArr = document.querySelector(`.timeline-card[data-type="transfer"][data-index="${arrIdx}"]`);
+      if (oldArr) oldArr.replaceWith(Components.createTransferCard(this.plan.transfers[arrIdx], arrIdx));
+    }
+    if (this.plan.transfers[depIdx] && this.plan.transfers[depIdx].type !== 'none') {
+      const oldDep = document.querySelector(`.timeline-card[data-type="transfer"][data-index="${depIdx}"]`);
+      if (oldDep) oldDep.replaceWith(Components.createTransferCard(this.plan.transfers[depIdx], depIdx));
+    }
+    // Also re-render last transfer if it was updated
+    if (cityIndex === this.plan.cities.length - 1) {
+      const lastIdx = this.plan.transfers.length - 1;
+      const lastTransfer = this.plan.transfers[lastIdx];
+      if (lastTransfer && lastTransfer.type !== 'none') {
+        const oldLast = document.querySelector(`.timeline-card[data-type="transfer"][data-index="${lastIdx}"]`);
+        if (oldLast) oldLast.replaceWith(Components.createTransferCard(lastTransfer, lastIdx));
+      }
     }
 
     this.recalculateAndRenderCost();
@@ -1712,7 +1855,10 @@ const Results = {
   },
 
   recalculateAndRenderCost() {
-    this.renderCostSidebar();
+    clearTimeout(this._costRecalcTimer);
+    this._costRecalcTimer = setTimeout(() => {
+      this.renderCostSidebar();
+    }, 50);
   },
 
   renderCostSidebar() {
@@ -1784,12 +1930,24 @@ const Results = {
       travelersEl.textContent = `${this.plan.adults} adult${this.plan.adults > 1 ? 's' : ''}${this.plan.children > 0 ? `, ${this.plan.children} child${this.plan.children > 1 ? 'ren' : ''}` : ''} · ${CostEngine.calculateRooms(this.plan.adults)} room${CostEngine.calculateRooms(this.plan.adults) > 1 ? 's' : ''}`;
     }
 
-    // Mobile bar
+    // Mobile bottom sheet
     const mobileTotal = document.getElementById('mobile-total');
     if (mobileTotal) {
       mobileTotal.innerHTML = `
         <span class="label">Estimated Total</span>
         ${Utils.formatCurrencyRange(costs.total.low, costs.total.high, 'EUR')}
+      `;
+    }
+
+    // Populate bottom sheet full breakdown
+    const bottomSheetFull = document.getElementById('bottom-sheet-full');
+    if (bottomSheetFull && breakdownEl) {
+      bottomSheetFull.innerHTML = `
+        <div class="cost-breakdown">${breakdownEl.innerHTML}</div>
+        <div class="cost-footer">
+          <span class="travelers-summary">${this.plan.adults} adult${this.plan.adults > 1 ? 's' : ''}${this.plan.children > 0 ? ', ' + this.plan.children + ' child' + (this.plan.children > 1 ? 'ren' : '') : ''} · ${CostEngine.calculateRooms(this.plan.adults)} room${CostEngine.calculateRooms(this.plan.adults) > 1 ? 's' : ''}</span>
+          <span class="estimate-note">Estimated prices based on available data.</span>
+        </div>
       `;
     }
   },
