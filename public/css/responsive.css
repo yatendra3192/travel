@@ -16,7 +16,7 @@
   .results-layout {
     flex-direction: column;
     padding: var(--space-md);
-    padding-bottom: 80px;
+    padding-bottom: 120px;
   }
 
   .cost-sidebar {
@@ -28,7 +28,7 @@
   }
 
   .results-header {
-    padding: var(--space-sm) var(--space-md);
+    padding: var(--space-sm) var(--space-md) 8px;
     gap: 6px;
   }
 
@@ -108,6 +108,17 @@
   .hotel-option-price {
     min-width: 60px;
   }
+
+  /* Ensure all interactive elements are touch-friendly */
+  .stepper-btn,
+  .mode-pill,
+  .autocomplete-item,
+  .btn-small,
+  .confirm-btn,
+  .btn-back,
+  .btn-recalculate {
+    min-height: var(--touch-min);
+  }
 }
 
 @media (max-width: 480px) {
@@ -122,5 +133,48 @@
   .pill {
     padding: 5px 10px;
     font-size: 0.75rem;
+  }
+
+  .flight-option {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .flight-option-airline {
+    flex-direction: row;
+    width: auto;
+    gap: 6px;
+  }
+
+  .airline-logo {
+    width: 28px;
+    height: 28px;
+    font-size: 0.6rem;
+  }
+
+  .flight-option-route {
+    flex-basis: 100%;
+    order: 3;
+  }
+
+  .flight-option-price {
+    margin-left: auto;
+  }
+
+  .mode-pill {
+    width: 36px;
+    height: 36px;
+    font-size: 0.9rem;
+  }
+}
+
+/* ── Safe area support for bottom sheet ── */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .mobile-cost-bar {
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .results-layout {
+    padding-bottom: calc(120px + env(safe-area-inset-bottom));
   }
 }

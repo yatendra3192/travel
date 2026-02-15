@@ -18,4 +18,14 @@ function clearCache() {
   cache.clear();
 }
 
+// Periodic cleanup of expired entries every hour to prevent memory buildup
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of cache) {
+    if (now > entry.expiry) {
+      cache.delete(key);
+    }
+  }
+}, 60 * 60 * 1000).unref();
+
 module.exports = { getCached, setCache, clearCache };

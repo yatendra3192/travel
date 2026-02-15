@@ -1,9 +1,11 @@
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 const path = require('path');
 const { getCached, setCache } = require('./cache');
 const { getFallbackIata, getNoAirportCity, getNearestAirportByCoords } = require('./iata-data');
 const { getLayoverMealCost, getCityMealCosts } = require('./meal-data');
+const rateLimit = require('express-rate-limit');
 
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 if (!GOOGLE_API_KEY) {
@@ -13,12 +15,60 @@ if (!GOOGLE_API_KEY) {
 const PYTHON_API_BASE = process.env.PYTHON_API_URL || 'http://localhost:5000';
 
 const app = express();
-app.use(cors());
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:3000', 'https://plan.aiezzy.com'];
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (same-origin, curl, etc.)
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, false);
+    }
+  }
+}));
+// Security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
+
+// Request ID tracing
+app.use((req, res, next) => {
+  req.id = req.headers['x-request-id'] || crypto.randomUUID();
+  res.setHeader('X-Request-Id', req.id);
+  next();
+});
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
+// Rate limiting
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later' },
+});
+const scrapeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many scraping requests, please try again later' },
+});
+app.use('/api/', generalLimiter);
+app.use('/api/flights', scrapeLimiter);
+app.use('/api/hotels', scrapeLimiter);
+
 const TTL = {
   IATA: 7 * 24 * 60 * 60 * 1000,
+  TRANSFER: 24 * 60 * 60 * 1000,
 };
 
 // ── Helper: call Python scraping API ──
@@ -28,7 +78,7 @@ async function pythonApiGet(endpoint, params = {}) {
     if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
   });
 
-  const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(60000) });
+  const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(30000) });
   if (!resp.ok) {
     const body = await resp.text();
     console.error(`Python API error ${resp.status} on ${endpoint}: ${body}`);
@@ -54,40 +104,57 @@ async function checkPythonService() {
   return false;
 }
 
+// ── Retry with exponential backoff for Google API calls ──
+async function withRetry(fn, { retries = 2, baseDelay = 1000, description = 'API call' } = {}) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const isRetryable = err.name === 'AbortError' ||
+        (err.cause && err.cause.code === 'ECONNRESET') ||
+        (err.status && (err.status === 429 || err.status >= 500));
+      if (attempt === retries || !isRetryable) throw err;
+      const delay = baseDelay * Math.pow(2, attempt);
+      console.warn(`[${description}] Attempt ${attempt + 1} failed: ${err.message}. Retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
 // ── Helper: Geocode an airport name to get its coordinates ──
 async function geocodeAirport(airportName) {
-  try {
+  return withRetry(async () => {
     const query = encodeURIComponent(airportName + ' airport');
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${query}&key=${GOOGLE_API_KEY}`;
-    const resp = await fetch(url);
-    if (!resp.ok) return null;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) throw new Error(`Geocode HTTP ${resp.status}`);
     const data = await resp.json();
     if (data.status === 'OK' && data.results?.[0]?.geometry?.location) {
-      return data.results[0].geometry.location; // { lat, lng }
+      return data.results[0].geometry.location;
     }
     return null;
-  } catch (e) {
+  }, { description: `geocode-airport:${airportName}` }).catch(e => {
     console.warn('Geocode airport error:', e.message);
     return null;
-  }
+  });
 }
 
 // ── Helper: Geocode a city name to get city center coordinates ──
 async function geocodeCity(cityName) {
-  try {
+  return withRetry(async () => {
     const query = encodeURIComponent(cityName + ' city center');
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${query}&key=${GOOGLE_API_KEY}`;
-    const resp = await fetch(url);
-    if (!resp.ok) return null;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) throw new Error(`Geocode HTTP ${resp.status}`);
     const data = await resp.json();
     if (data.status === 'OK' && data.results?.[0]?.geometry?.location) {
-      return data.results[0].geometry.location; // { lat, lng }
+      return data.results[0].geometry.location;
     }
     return null;
-  } catch (e) {
+  }, { description: `geocode-city:${cityName}` }).catch(e => {
     console.warn('Geocode city error:', e.message);
     return null;
-  }
+  });
 }
 
 // ── Helper: Get transit route from Google Directions API ──
@@ -291,6 +358,14 @@ app.get('/api/flights', async (req, res) => {
       return res.status(400).json({ error: 'origin, destination, and date are required' });
     }
 
+    // Validate inputs
+    if (!/^[A-Z]{3}$/i.test(origin) || !/^[A-Z]{3}$/i.test(destination)) {
+      return res.status(400).json({ error: 'Invalid airport codes. Expected 3-letter IATA codes.' });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({ error: 'Invalid date format. Expected YYYY-MM-DD.' });
+    }
+
     const data = await pythonApiGet('/api/scrape/flights', {
       origin, destination, date,
       adults: adults || 1,
@@ -299,9 +374,8 @@ app.get('/api/flights', async (req, res) => {
 
     res.json(data);
   } catch (err) {
-    console.error('flights error:', err);
-    // Return empty result so frontend can use fallback estimates
-    res.json({ flights: [], carriers: {} });
+    console.error('flights error:', err.message);
+    res.status(502).json({ flights: [], carriers: {}, error: 'Flight search temporarily unavailable. Using estimates.' });
   }
 });
 
@@ -314,8 +388,8 @@ app.get('/api/hotels/list', async (req, res) => {
     const data = await pythonApiGet('/api/scrape/hotels/list', { cityCode });
     res.json(data);
   } catch (err) {
-    console.error('hotels/list error:', err);
-    res.json({ hotels: [] });
+    console.error('hotels/list error:', err.message);
+    res.status(502).json({ hotels: [], error: 'Hotel search temporarily unavailable.' });
   }
 });
 
@@ -326,6 +400,12 @@ app.get('/api/hotels/offers', async (req, res) => {
     if (!hotelIds || !checkIn || !checkOut) {
       return res.status(400).json({ error: 'hotelIds, checkIn, checkOut are required' });
     }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOut)) {
+      return res.status(400).json({ error: 'Invalid date format. Expected YYYY-MM-DD.' });
+    }
+    if (new Date(checkIn) >= new Date(checkOut)) {
+      return res.status(400).json({ error: 'Check-in date must be before check-out date' });
+    }
 
     const data = await pythonApiGet('/api/scrape/hotels/offers', {
       hotelIds, checkIn, checkOut,
@@ -333,8 +413,8 @@ app.get('/api/hotels/offers', async (req, res) => {
     });
     res.json(data);
   } catch (err) {
-    console.error('hotels/offers error:', err);
-    res.json({ offers: [] });
+    console.error('hotels/offers error:', err.message);
+    res.status(502).json({ offers: [], error: 'Hotel pricing temporarily unavailable.' });
   }
 });
 
@@ -345,6 +425,10 @@ app.get('/api/hotels/list-by-geocode', async (req, res) => {
     if (!latitude || !longitude) {
       return res.status(400).json({ error: 'latitude and longitude are required' });
     }
+    const lat = parseFloat(latitude), lng = parseFloat(longitude);
+    if (isNaN(lat) || isNaN(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+      return res.status(400).json({ error: 'Invalid coordinates' });
+    }
 
     const data = await pythonApiGet('/api/scrape/hotels/list-by-geocode', {
       latitude, longitude,
@@ -352,8 +436,8 @@ app.get('/api/hotels/list-by-geocode', async (req, res) => {
     });
     res.json(data);
   } catch (err) {
-    console.error('hotels/list-by-geocode error:', err);
-    res.json({ hotels: [], searchRadius: parseInt(radius) || 5 });
+    console.error('hotels/list-by-geocode error:', err.message);
+    res.status(502).json({ hotels: [], searchRadius: parseInt(req.query.radius) || 5, error: 'Hotel search temporarily unavailable.' });
   }
 });
 
@@ -445,12 +529,22 @@ app.get('/api/transfer-estimate', async (req, res) => {
       return res.status(400).json({ error: 'coordinates or text addresses required' });
     }
 
+    // Validate coordinates
+    const oLat = parseFloat(originLat), oLng = parseFloat(originLng);
+    const dLat = parseFloat(destLat), dLng = parseFloat(destLng);
+    if (!originText && !destText) {
+      if (isNaN(oLat) || isNaN(oLng) || isNaN(dLat) || isNaN(dLng)) {
+        return res.status(400).json({ error: 'Invalid coordinates' });
+      }
+      if (Math.abs(oLat) > 90 || Math.abs(dLat) > 90 || Math.abs(oLng) > 180 || Math.abs(dLng) > 180) {
+        return res.status(400).json({ error: 'Coordinates out of range' });
+      }
+    }
+
     const cacheKey = `transfer:${originText || originLat + ',' + originLng}-${destText || destLat + ',' + destLng}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
 
-    const oLat = parseFloat(originLat), oLng = parseFloat(originLng);
-    const dLat = parseFloat(destLat), dLng = parseFloat(destLng);
     const countryCode = country || 'DEFAULT';
     const straightDist = (oLat && dLat) ? haversineKm(oLat, oLng, dLat, dLng) : 30;
 
@@ -601,7 +695,7 @@ app.get('/api/transfer-estimate', async (req, res) => {
       straightLineKm: Math.round(straightDist),
     };
 
-    setCache(cacheKey, result, TTL.IATA);
+    setCache(cacheKey, result, TTL.TRANSFER);
     res.json(result);
   } catch (err) {
     console.error('transfer-estimate error:', err);
@@ -615,7 +709,7 @@ async function fetchGoogleRaw(origin, destination, mode, alternatives) {
     const d = encodeURIComponent(destination);
     let url = `https://maps.googleapis.com/maps/api/directions/json?origin=${o}&destination=${d}&mode=${mode}&key=${GOOGLE_API_KEY}`;
     if (alternatives) url += '&alternatives=true';
-    const resp = await fetch(url);
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!resp.ok) return null;
     const data = await resp.json();
     if (data.status !== 'OK') return null;
@@ -625,6 +719,16 @@ async function fetchGoogleRaw(origin, destination, mode, alternatives) {
     return null;
   }
 }
+
+// ── Maps API key endpoint (so key isn't hardcoded in HTML) ──
+app.get('/api/maps-config', (req, res) => {
+  res.json({ key: GOOGLE_API_KEY });
+});
+
+// ── Exchange rates endpoint (server-controlled, can be updated without frontend deploy) ──
+app.get('/api/exchange-rates', (req, res) => {
+  res.json({ base: 'EUR', rates: EUR_RATES, updatedAt: '2025-01-15' });
+});
 
 // ── SPA fallback ──
 app.get('*', (req, res) => {

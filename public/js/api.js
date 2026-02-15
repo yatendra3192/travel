@@ -20,21 +20,17 @@ const Api = {
       children: String(children || 0)
     });
     const resp = await fetch(`/api/flights?${params}`);
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(err.error || 'Flight search failed');
-    }
-    return resp.json();
+    const data = await resp.json().catch(() => ({ flights: [], carriers: {} }));
+    if (data.error) console.warn('Flights API:', data.error);
+    return data;
   },
 
   async listHotels(cityCode) {
     const params = new URLSearchParams({ cityCode });
     const resp = await fetch(`/api/hotels/list?${params}`);
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(err.error || 'Hotel list failed');
-    }
-    return resp.json();
+    const data = await resp.json().catch(() => ({ hotels: [] }));
+    if (data.error) console.warn('Hotels list API:', data.error);
+    return data;
   },
 
   async getHotelOffers(hotelIds, checkIn, checkOut, adults) {
@@ -44,11 +40,9 @@ const Api = {
       adults: String(adults || 1)
     });
     const resp = await fetch(`/api/hotels/offers?${params}`);
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(err.error || 'Hotel offers failed');
-    }
-    return resp.json();
+    const data = await resp.json().catch(() => ({ offers: [] }));
+    if (data.error) console.warn('Hotel offers API:', data.error);
+    return data;
   },
 
   async listHotelsByGeocode(latitude, longitude, radius) {
@@ -58,11 +52,9 @@ const Api = {
       radius: String(radius || 5),
     });
     const resp = await fetch(`/api/hotels/list-by-geocode?${params}`);
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(err.error || 'Hotel geocode search failed');
-    }
-    return resp.json();
+    const data = await resp.json().catch(() => ({ hotels: [] }));
+    if (data.error) console.warn('Hotels geocode API:', data.error);
+    return data;
   },
 
   async getMealCosts(cityCode, countryCode, layovers) {

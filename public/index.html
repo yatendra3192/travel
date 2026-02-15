@@ -6,7 +6,7 @@
   <title>Trip Cost Calculator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/variables.css">
   <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/landing.css">
@@ -28,7 +28,7 @@
         <div class="form-group">
           <label for="from-input">From</label>
           <div class="input-wrapper">
-            <input type="text" id="from-input" placeholder="e.g. Thane West, Mumbai" autocomplete="off">
+            <input type="text" id="from-input" placeholder="e.g. Thane West, Mumbai" autocomplete="off" aria-label="Origin city">
             <div id="from-dropdown" class="autocomplete-dropdown"></div>
           </div>
         </div>
@@ -38,7 +38,7 @@
           <label>Destinations</label>
           <div id="destination-chips" class="chip-container"></div>
           <div class="input-wrapper">
-            <input type="text" id="to-input" placeholder="Add a destination city..." autocomplete="off">
+            <input type="text" id="to-input" placeholder="Add a destination city..." autocomplete="off" aria-label="Destination city">
             <div id="to-dropdown" class="autocomplete-dropdown"></div>
           </div>
         </div>
@@ -46,7 +46,7 @@
         <!-- Departure Date -->
         <div class="form-group">
           <label for="departure-date">Departure Date</label>
-          <input type="date" id="departure-date">
+          <input type="date" id="departure-date" aria-label="Departure date">
         </div>
 
         <!-- Travelers -->
@@ -77,7 +77,7 @@
   </div>
 
   <!-- ===== LOADING OVERLAY ===== -->
-  <div id="loading-overlay" class="loading-overlay" style="display:none;">
+  <div id="loading-overlay" class="loading-overlay" style="display:none;" role="status" aria-live="polite">
     <div class="loading-content">
       <div class="loading-spinner"></div>
       <div id="loading-steps" class="loading-steps"></div>
@@ -93,7 +93,7 @@
           <div class="header-field header-from">
             <label>From</label>
             <div class="header-input-wrap">
-              <input type="text" id="header-from-input" class="header-input" placeholder="Origin..." autocomplete="off">
+              <input type="text" id="header-from-input" class="header-input" placeholder="Origin..." autocomplete="off" aria-label="Change origin city">
               <div id="header-from-dropdown" class="autocomplete-dropdown header-dropdown"></div>
             </div>
           </div>
@@ -103,7 +103,7 @@
             <div class="header-chips-wrap">
               <div id="header-dest-chips" class="header-chips"></div>
               <div class="header-input-wrap">
-                <input type="text" id="header-to-input" class="header-input" placeholder="Add city..." autocomplete="off">
+                <input type="text" id="header-to-input" class="header-input" placeholder="Add city..." autocomplete="off" aria-label="Add destination city">
                 <div id="header-to-dropdown" class="autocomplete-dropdown header-dropdown"></div>
               </div>
             </div>
@@ -112,11 +112,11 @@
         <div class="header-schedule-group">
           <div class="header-field">
             <label>Date</label>
-            <input type="date" id="search-bar-date" class="header-input header-input-sm">
+            <input type="date" id="search-bar-date" class="header-input header-input-sm" aria-label="Departure date">
           </div>
           <div class="header-field">
             <label>Time</label>
-            <input type="time" id="search-bar-time" class="header-input header-input-sm" value="00:00">
+            <input type="time" id="search-bar-time" class="header-input header-input-sm" value="00:00" aria-label="Departure time">
           </div>
         </div>
       </div>
@@ -133,7 +133,7 @@
         <div class="header-bottom-right">
           <div class="header-field">
             <label>Currency</label>
-            <select id="header-currency" class="header-input header-input-sm">
+            <select id="header-currency" class="header-input header-input-sm" aria-label="Display currency">
               <option value="INR" selected>&#8377; INR</option>
               <option value="EUR">&euro; EUR</option>
               <option value="USD">$ USD</option>
@@ -173,22 +173,31 @@
       </aside>
     </div>
 
-    <!-- Mobile bottom sticky bar -->
+    <!-- Mobile bottom sheet -->
     <div id="mobile-cost-bar" class="mobile-cost-bar">
-      <div id="mobile-total" class="mobile-total">
-        <span class="label">Estimated Total</span>
-        --
+      <div class="bottom-sheet-handle" id="bottom-sheet-handle"></div>
+      <div class="bottom-sheet-peek">
+        <div id="mobile-total" class="mobile-total">
+          <span class="label">Estimated Total</span>
+          --
+        </div>
+        <button id="mobile-details-btn" class="btn-small">Details</button>
       </div>
-      <button id="mobile-details-btn" class="btn-small">View Details</button>
+      <div class="bottom-sheet-full" id="bottom-sheet-full"></div>
     </div>
   </div>
 
-  <!-- Google Maps -->
+  <!-- Google Maps - loaded dynamically from server -->
   <script>
-    (g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.${c}apis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({
-      key: "AIzaSyC8L_jH9rFRguKUoh1BXdKUaaVLXZT9U1g",
-      v: "weekly"
-    });
+    (async function loadGoogleMaps() {
+      try {
+        const resp = await fetch('/api/maps-config');
+        const { key } = await resp.json();
+        if (!key) { console.error('No Maps API key configured'); return; }
+        const g = { key, v: "weekly" };
+        var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.${c}apis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n));
+      } catch(e) { console.error('Failed to load Maps config:', e); }
+    })();
   </script>
   <script src="js/utils.js"></script>
   <script src="js/api.js"></script>

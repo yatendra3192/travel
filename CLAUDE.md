@@ -74,11 +74,13 @@ JS modules:
 - **api.js** — Thin fetch wrapper for all `/api/*` endpoints
 
 **Key data flow in results.js:**
-1. `generateTripPlan()` → resolves IATA codes → `buildFlightLegs()` → parallel fetch (flights, hotels, ground routes, meals, transfers) → `buildPlan()` → `_computeArrivalDates()` → re-fetch flights if dates shifted → `renderTimeline()`
+1. `generateTripPlan()` → resolves IATA codes → `buildFlightLegs()` → parallel fetch (flights, hotels, ground routes, train routes, meals, transfers) → `buildPlan()` → `_computeArrivalDates()` → re-fetch flights if dates shifted → `renderTimeline()`
 2. User edits trigger: `onNightsChange()`, `selectFlightOption()`, `Components.selectTransportMode()`, `selectTransferMode()` → `recalculateFlightDates()` → `refetchFlights()` → re-render → `recalculateAndRenderCost()`
 3. `_computeTimelineSchedule()` walks the entire itinerary computing start/end times for every card
 
 **Flight leg types:** `'flight'` (normal), `'train'` (no-airport city), `'skip'` (same airport for both cities — direct ground transfer, no flight needed)
+
+**Train legs with live transit data:** Train legs fetch Google Maps transit routes via `/api/transfer-estimate` (same endpoint as flight leg ground routes). Results are stored on `leg.trainRoutes` (parallel to `leg.groundRoutes` on flight legs). When transit data exists, the train card shows selectable transit options (reusing `_buildTransitOptionRow()` and `toggleMoreOptions()` from flight cards). `selectTransitOption()` handles both flight and train legs — for trains it updates `leg.transitInfo.estimatedCostEur`/`duration`/`fareSource` from the selected route. The cost engine reads `transitInfo.estimatedCostEur` automatically. Schedule computation in `_computeTimelineSchedule()` prefers `trainRoutes.transitRoutes[0].durationSec` over the static `transitInfo.duration`.
 
 **Multi-modal transport:** Each flight leg carries `groundRoutes` (fetched from `/api/transfer-estimate` city-to-city) and `selectedMode` (`'flight'` | `'transit'` | `'drive'` | `'walk'` | `'bike'`). When user selects a non-flight mode, the card switches to show ground transport info, schedule uses `durationSec` from the ground route, costs use transit fare or taxi estimate (walk/bike are free), and arrival dates use same-day (no overnight). Mode pills appear in the flight card header when `groundRoutes` data exists. `Components.selectTransportMode(legIndex, mode)` handles the switch, re-renders the card in-place, and triggers schedule/cost recalculation.
 

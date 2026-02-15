@@ -14,7 +14,7 @@ from playwright.async_api import BrowserContext, Page
 
 from utils.browser_pool import pool
 from utils.anti_detect import random_delay
-from scrapers.base import rate_limit, retry_with_backoff
+from scrapers.base import rate_limit, retry_with_backoff, logger
 from cache.memory_cache import get_flights, set_flights
 from config import PAGE_TIMEOUT
 
@@ -84,6 +84,8 @@ async def _scrape_google_flights(
 
         # Parse flight result items
         flight_items = await page.query_selector_all('li[class*="pIav2d"]')
+        if len(flight_items) == 0:
+            logger.warning(f"No flight items found for {origin}->{destination}. Selector 'li[class*=\"pIav2d\"]' may be stale.")
         print(f"[flights] Found {len(flight_items)} flight items for {origin}->{destination}")
 
         for idx, item in enumerate(flight_items[:10]):
@@ -160,7 +162,14 @@ async def _parse_flight_item(item, origin: str, dest: str, date: str, idx: int) 
                 if val > 10:
                     price = val
 
+        if price is None:
+            logger.warning(f"Price extraction failed for flight {idx}. All methods exhausted.")
+
         if price is None or price < 10:
+            return None
+
+        if price > 50000:
+            logger.warning(f"Skipping flight {idx}: price {price} EUR exceeds upper bound of 50000")
             return None
 
         # --- Times ---
@@ -226,7 +235,7 @@ async def _parse_flight_item(item, origin: str, dest: str, date: str, idx: int) 
                 arr_time_str = time_24h.group(2)
 
         if not dep_time_str:
-            print(f"[flights] WARNING: Could not parse times for flight {idx}. First lines: {lines[:5]}")
+            logger.warning(f"Could not parse times for flight {idx}. First lines: {lines[:5]}")
 
         departure_dt = _parse_time_to_iso(date, dep_time_str)
         arrival_dt = _parse_time_to_iso(date, arr_time_str)
@@ -245,6 +254,11 @@ async def _parse_flight_item(item, origin: str, dest: str, date: str, idx: int) 
             m = int(dur_match.group(2) or 0)
             duration_str = f"PT{h}H{m}M"
             dur_total_min = h * 60 + m
+
+        # Validate duration is between 30 minutes and 50 hours
+        if dur_total_min > 0 and (dur_total_min < 30 or dur_total_min > 3000):
+            logger.warning(f"Skipping flight {idx}: duration {dur_total_min} min outside valid range (30-3000 min)")
+            return None
 
         # Fix overnight/multi-day flights:
         # Google Flights shows arrival time but not arrival date,
@@ -299,6 +313,7 @@ async def _parse_flight_item(item, origin: str, dest: str, date: str, idx: int) 
                 airports = re.findall(r'[A-Z]{3}', stop_airports_match.group(1))
                 for ap in airports:
                     if ap != origin and ap != dest:
+                        logger.warning(f"Could not parse layover duration, defaulting to 90 min for {ap}")
                         layovers.append({
                             "airportCode": ap,
                             "durationMinutes": 90,  # estimate
@@ -441,7 +456,7 @@ async def _parse_flight_item(item, origin: str, dest: str, date: str, idx: int) 
             })
 
         flight_id = hashlib.md5(
-            f"gf-{actual_origin}{actual_dest}{date}{price}{idx}".encode()
+            f"gf-{actual_origin}{actual_dest}{date}{departure_dt}{arrival_dt}{stops}".encode()
         ).hexdigest()[:12]
 
         return {
@@ -491,5 +506,5 @@ def _parse_time_to_iso(date: str, time_str: str) -> str | None:
         if 0 <= h <= 23 and 0 <= mi <= 59:
             return f"{date}T{h:02d}:{mi:02d}:00"
 
-    print(f"[flights] WARNING: Could not parse time '{time_str}' for date {date}")
+    logger.warning(f"Could not parse time '{time_str}' for date {date}")
     return None

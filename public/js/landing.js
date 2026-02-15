@@ -2,6 +2,7 @@ const Landing = {
   fromPlace: null,
   destinations: [],
   sessionToken: null,
+  _highlightIdx: -1,
 
   init() {
     this.fromInput = document.getElementById('from-input');
@@ -44,6 +45,35 @@ const Landing = {
       if (val.length >= 2) debouncedToSearch(val);
       else this.toDropdown.classList.remove('show');
     });
+
+    // Keyboard navigation for autocomplete dropdowns
+    const addKeyboardNav = (input, dropdown) => {
+      input.addEventListener('keydown', (e) => {
+        const items = dropdown.querySelectorAll('.autocomplete-item');
+        if (!items.length || !dropdown.classList.contains('show')) return;
+
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          this._highlightIdx = Math.min(this._highlightIdx + 1, items.length - 1);
+          items.forEach((el, i) => el.classList.toggle('highlighted', i === this._highlightIdx));
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          this._highlightIdx = Math.max(this._highlightIdx - 1, 0);
+          items.forEach((el, i) => el.classList.toggle('highlighted', i === this._highlightIdx));
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          if (this._highlightIdx >= 0 && items[this._highlightIdx]) {
+            items[this._highlightIdx].click();
+            this._highlightIdx = -1;
+          }
+        } else if (e.key === 'Escape') {
+          dropdown.classList.remove('show');
+          this._highlightIdx = -1;
+        }
+      });
+    };
+    addKeyboardNav(this.fromInput, this.fromDropdown);
+    addKeyboardNav(this.toInput, this.toDropdown);
   },
 
   async fetchSuggestions(query, target) {
@@ -70,6 +100,7 @@ const Landing = {
 
   renderDropdown(suggestions, dropdown, target) {
     dropdown.innerHTML = '';
+    this._highlightIdx = -1;
     if (suggestions.length === 0) {
       dropdown.classList.remove('show');
       return;
@@ -169,6 +200,21 @@ const Landing = {
     this.form.addEventListener('submit', (e) => {
       e.preventDefault();
       if (!this.validateForm()) return;
+
+      // Check if any destination matches the origin
+      const originName = (this.fromPlace.name || '').toLowerCase();
+      const originLat = this.fromPlace.lat;
+      const originLng = this.fromPlace.lng;
+      const duplicate = this.destinations.some(d => {
+        if (d.name.toLowerCase() === originName) return true;
+        if (originLat && originLng && d.lat && d.lng &&
+            Math.abs(d.lat - originLat) < 0.01 && Math.abs(d.lng - originLng) < 0.01) return true;
+        return false;
+      });
+      if (duplicate) {
+        alert('Origin and destination cannot be the same city.');
+        return;
+      }
 
       const tripData = {
         from: this.fromPlace,

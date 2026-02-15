@@ -42,6 +42,59 @@
   --color-city-accent: var(--color-primary);
   --color-transfer-accent: #94a3b8;
   --color-train-accent: #8b5cf6;
+
+  /* ── Glass surfaces ── */
+  --glass-bg: rgba(255,255,255,0.65);
+  --glass-bg-strong: rgba(255,255,255,0.80);
+  --glass-bg-input: rgba(255,255,255,0.88);
+  --glass-bg-header: rgba(255,255,255,0.82);
+  --glass-border: rgba(255,255,255,0.35);
+  --glass-border-strong: rgba(255,255,255,0.55);
+  --glass-blur: blur(20px);
+  --glass-blur-light: blur(12px);
+  --glass-blur-heavy: blur(28px);
+  --glass-saturate: saturate(180%);
+  --glass-shadow: 0 8px 32px rgba(0,0,0,0.08);
+  --glass-shadow-elevated: 0 12px 40px rgba(0,0,0,0.12);
+  --glass-shadow-inset: inset 0 1px 0 rgba(255,255,255,0.5);
+
+  /* ── Background gradient ── */
+  --glass-bg-start: #e8eaf6;
+  --glass-bg-mid: #e0f2f1;
+  --glass-bg-end: #fce4ec;
+  --glass-bg-gradient: linear-gradient(135deg, var(--glass-bg-start) 0%, var(--glass-bg-mid) 50%, var(--glass-bg-end) 100%);
+
+  /* ── Accent glows ── */
+  --glow-primary: 0 0 20px rgba(15,118,110,0.25);
+  --glow-flight: 0 0 20px rgba(59,130,246,0.2);
+  --glow-city: 0 0 20px rgba(15,118,110,0.2);
+  --glow-transfer: 0 0 20px rgba(148,163,184,0.2);
+  --glow-train: 0 0 20px rgba(139,92,246,0.2);
+
+  /* ── Glass radii ── */
+  --radius-glass-sm: 12px;
+  --radius-glass-md: 16px;
+  --radius-glass-lg: 20px;
+  --radius-glass-xl: 24px;
+
+  /* ── Typography scale ── */
+  --font-display: 2rem;
+  --font-heading: 1.25rem;
+  --font-body: 0.9375rem;
+  --font-caption: 0.8125rem;
+  --font-micro: 0.75rem;
+
+  /* ── Touch & spacing ── */
+  --touch-min: 44px;
+  --space-card-pad: 20px;
+  --space-card-gap: 12px;
+
+  /* ── Animation ── */
+  --ease-spring: cubic-bezier(0.34,1.56,0.64,1);
+  --ease-smooth: cubic-bezier(0.4,0,0.2,1);
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
 }
 
 *, *::before, *::after {
@@ -57,9 +110,11 @@ html {
 body {
   font-family: var(--font-family);
   color: var(--color-text);
-  background: var(--color-bg-page);
+  background: var(--glass-bg-gradient);
+  background-attachment: fixed;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
 }
 
 .page {

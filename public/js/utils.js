@@ -13,6 +13,7 @@ const Utils = {
   },
 
   convertFromEur(amount, toCurrency) {
+    if (!this.EXCHANGE_RATES[toCurrency]) console.warn('Unknown currency code:', toCurrency);
     return amount * (this.EXCHANGE_RATES[toCurrency] || 1);
   },
 
@@ -20,6 +21,8 @@ const Utils = {
     if (amount == null || isNaN(amount)) return '--';
     const display = this.displayCurrency;
     // Convert from source to display currency
+    if (!this.EXCHANGE_RATES[sourceCurrency]) console.warn('Unknown currency code:', sourceCurrency);
+    if (!this.EXCHANGE_RATES[display]) console.warn('Unknown currency code:', display);
     const fromRate = this.EXCHANGE_RATES[sourceCurrency] || 1;
     const toRate = this.EXCHANGE_RATES[display] || 1;
     const converted = amount * (toRate / fromRate);
@@ -53,13 +56,13 @@ const Utils = {
   formatDate(isoDate) {
     if (!isoDate) return '--';
     const d = new Date(isoDate + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+    return d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
   },
 
   formatDateShort(isoDate) {
     if (!isoDate) return '--';
     const d = new Date(isoDate + 'T00:00:00');
-    return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
   },
 
   addDays(dateStr, days) {

@@ -1,15 +1,15 @@
 #landing-page {
   background:
-    radial-gradient(ellipse at 20% 50%, rgba(20,184,166,0.06) 0%, transparent 60%),
-    radial-gradient(ellipse at 80% 30%, rgba(15,118,110,0.04) 0%, transparent 50%),
-    var(--color-bg-page);
+    radial-gradient(ellipse at 20% 50%, rgba(20,184,166,0.10) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 30%, rgba(59,130,246,0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 60% 80%, rgba(252,228,236,0.15) 0%, transparent 50%);
 }
 
 .landing-container {
   max-width: 520px;
   margin: 0 auto;
   padding: var(--space-xl) var(--space-md);
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -21,11 +21,15 @@
 }
 
 .landing-header h1 {
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--color-primary);
+  font-size: var(--font-display);
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--color-primary) 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   margin-bottom: var(--space-xs);
   letter-spacing: -0.5px;
+  line-height: 1.1;
 }
 
 .landing-subtitle {
@@ -36,11 +40,13 @@
 }
 
 .trip-form {
-  background: var(--color-bg);
+  background: var(--glass-bg-strong);
+  -webkit-backdrop-filter: var(--glass-blur) var(--glass-saturate);
+  backdrop-filter: var(--glass-blur) var(--glass-saturate);
+  border: 1px solid var(--glass-border-strong);
+  border-radius: var(--radius-glass-lg);
+  box-shadow: var(--glass-shadow-elevated), var(--glass-shadow-inset);
   padding: var(--space-lg);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
-  border: 1px solid rgba(0,0,0,0.04);
 }
 
 .form-group {
@@ -61,24 +67,27 @@
 .form-group input[type="date"] {
   width: 100%;
   padding: 12px 14px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-glass-sm);
   font-size: 0.95rem;
   font-family: var(--font-family);
   color: var(--color-text);
-  background: var(--color-bg-subtle);
-  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  background: var(--glass-bg-input);
+  -webkit-backdrop-filter: var(--glass-blur-light);
+  backdrop-filter: var(--glass-blur-light);
+  transition: border-color var(--duration-normal) var(--ease-smooth), box-shadow var(--duration-normal) var(--ease-smooth), background var(--duration-normal) var(--ease-smooth);
   outline: none;
+  min-height: var(--touch-min);
 }
 
 .form-group input[type="text"]:focus,
 .form-group input[type="date"]:focus {
-  background: var(--color-bg);
+  background: rgba(255,255,255,0.95);
 }
 
 .form-group input:focus {
   border-color: var(--color-primary-light);
-  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.15);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.18);
 }
 
 .form-row {

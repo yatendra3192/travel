@@ -38,9 +38,11 @@ const App = {
 
   goBack() {
     this.showPage('landing');
-    // Reset cost sidebar mobile overlay if open
+    // Reset cost sidebar and bottom sheet
     const sidebar = document.getElementById('cost-sidebar');
     sidebar.style.cssText = '';
+    const bar = document.getElementById('mobile-cost-bar');
+    if (bar) bar.classList.remove('expanded');
   },
 };
 

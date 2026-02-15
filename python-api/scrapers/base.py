@@ -1,8 +1,17 @@
 """Base scraping utilities: rate limiting, retry with backoff."""
 
 import asyncio
+import logging
 import time
 from config import MAX_RETRIES, RETRY_BACKOFF, RATE_LIMIT_SKYSCANNER, RATE_LIMIT_BOOKING
+
+# Structured logger for all scrapers
+logger = logging.getLogger("scrapers")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter('%(asctime)s [%(name)s] %(levelname)s: %(message)s'))
+    logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
 
 
 # Per-domain rate limiting
