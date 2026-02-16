@@ -1052,6 +1052,8 @@ const Results = {
               from: fromLabel,
               to: toLabel,
               type,
+              originLat: oLat, originLng: oLng,
+              destLat: dLat, destLng: dLng,
               distanceKm: est.driving.distanceKm,
               durationText: est.driving.duration,
               drivingSummary: est.driving.summary,
@@ -1076,6 +1078,8 @@ const Results = {
         from: fromLabel,
         to: toLabel,
         type,
+        originLat: oLat, originLng: oLng,
+        destLat: dLat, destLng: dLng,
         distanceKm: distKm,
         durationText: `~${Math.max(15, Math.round(distKm * 1.2))} min`,
         ...CostEngine.estimateTransferCost(distKm, country),
@@ -1308,22 +1312,18 @@ const Results = {
               <h4>${Utils.escapeHtml(plan.cities[i].name)}</h4>
               <span class="card-subtitle">Passing through &middot; no overnight stay</span>
             </div>
-            <div id="nights-stepper-pass-${i}" style="margin-left:auto"></div>
+            <button class="nights-edit-btn" onclick="event.stopPropagation(); Results.onNightsChange(${i})" style="margin-left:auto">
+              <span class="nights-edit-value">0</span> nights
+              <span class="nights-edit-icon">&#9998;</span>
+            </button>
           </div>
         `;
-        const stepperSlot = passCard.querySelector(`#nights-stepper-pass-${i}`);
-        stepperSlot.appendChild(
-          Components.createStepper(0, 0, 14, (val) => this.onNightsChange(i, val), 'nights')
-        );
         appendWithStagger(passCard);
         appendWithStagger(Components.createConnector());
       } else {
         // City stay card
         appendWithStagger(
-          Components.createCityCard(
-            plan.cities[i], i,
-            (idx, nights) => this.onNightsChange(idx, nights)
-          )
+          Components.createCityCard(plan.cities[i], i)
         );
         appendWithStagger(Components.createConnector());
 
@@ -1376,26 +1376,14 @@ const Results = {
     });
   },
 
-  async onNightsChange(cityIndex, nights) {
+  async onNightsChange(cityIndex) {
     const city = this.plan.cities[cityIndex];
-
-    // Confirm when setting nights to 0 (skip hotel stay)
-    if (nights === 0 && city.nights > 0) {
-      const confirmed = await this._showConfirmPopup(
-        'Skip hotel stay?',
-        `Remove the overnight stay in ${city.name}? You'll pass through without staying.`
-      );
-      if (!confirmed) {
-        // Reset stepper back to current value
-        const stepper = document.querySelector(`.timeline-card[data-type="city"][data-index="${cityIndex}"] .stepper-value`);
-        if (stepper) stepper.textContent = city.nights;
-        return;
-      }
-    }
+    const result = await this._showNightsPopup(city.name, city.nights);
+    if (result === null) return; // cancelled
 
     const wasZero = city.nights === 0;
-    city.nights = nights;
-    const isZero = nights === 0;
+    city.nights = result;
+    const isZero = result === 0;
 
     // If switching to/from 0 nights, recalculate affected transfers
     if (wasZero !== isZero) {
@@ -1411,6 +1399,62 @@ const Results = {
     // Always re-render timeline (schedule times change with nights)
     this.renderTimeline();
     this.recalculateAndRenderCost();
+  },
+
+  _showNightsPopup(cityName, currentNights) {
+    return new Promise(resolve => {
+      let nights = currentNights;
+      const overlay = document.createElement('div');
+      overlay.className = 'confirm-overlay';
+
+      function render() {
+        overlay.innerHTML = `
+          <div class="confirm-popup nights-popup">
+            <h3>Nights in ${Utils.escapeHtml(cityName)}</h3>
+            <p>Changing nights will recalculate flight dates, transfers, and costs.</p>
+            <div class="nights-popup-stepper">
+              <button class="nights-popup-btn minus" ${nights <= 0 ? 'disabled' : ''}>−</button>
+              <span class="nights-popup-value">${nights}</span>
+              <button class="nights-popup-btn plus" ${nights >= 14 ? 'disabled' : ''}>+</button>
+              <span class="nights-popup-label">night${nights !== 1 ? 's' : ''}</span>
+            </div>
+            <div class="confirm-actions">
+              <button class="confirm-btn cancel">Cancel</button>
+              <button class="confirm-btn confirm" ${nights === currentNights ? 'disabled' : ''}>Apply</button>
+            </div>
+          </div>
+        `;
+
+        overlay.querySelector('.minus').addEventListener('click', () => {
+          if (nights > 0) { nights--; render(); }
+        });
+        overlay.querySelector('.plus').addEventListener('click', () => {
+          if (nights < 14) { nights++; render(); }
+        });
+        overlay.querySelector('.cancel').addEventListener('click', () => {
+          overlay.classList.remove('visible');
+          setTimeout(() => overlay.remove(), 200);
+          resolve(null);
+        });
+        overlay.querySelector('.confirm').addEventListener('click', () => {
+          if (nights === currentNights) return;
+          overlay.classList.remove('visible');
+          setTimeout(() => overlay.remove(), 200);
+          resolve(nights);
+        });
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) {
+            overlay.classList.remove('visible');
+            setTimeout(() => overlay.remove(), 200);
+            resolve(null);
+          }
+        });
+      }
+
+      render();
+      document.body.appendChild(overlay);
+      requestAnimationFrame(() => overlay.classList.add('visible'));
+    });
   },
 
   async _recalcCityTransfers(cityIndex) {
@@ -1459,6 +1503,8 @@ const Results = {
           Object.assign(existingArr, {
             from: originLabel,
             to: destLabel,
+            originLat, originLng,
+            destLat, destLng,
             distanceKm: est.driving.distanceKm,
             durationText: est.driving.duration,
             drivingSummary: est.driving.summary,
@@ -1485,6 +1531,8 @@ const Results = {
           Object.assign(lastTransfer, {
             from: destLabel,
             to: homeName,
+            originLat: destLat, originLng: destLng,
+            destLat: plan.from.cityLat, destLng: plan.from.cityLng,
             distanceKm: est.driving.distanceKm,
             durationText: est.driving.duration,
             drivingSummary: est.driving.summary,
@@ -1513,6 +1561,8 @@ const Results = {
             Object.assign(depTransfer, {
               from: destLabel,
               to: stationName,
+              originLat: destLat, originLng: destLng,
+              destLat: stLat, destLng: stLng,
               distanceKm: est.driving.distanceKm,
               durationText: est.driving.duration,
               drivingSummary: est.driving.summary,
@@ -1580,6 +1630,7 @@ const Results = {
           const bt = est.transitRoutes?.[0] || {};
           Object.assign(t, {
             from: fromLabel, to: toLabel, type,
+            originLat: fLat, originLng: fLng, destLat: tLat, destLng: tLng,
             distanceKm: est.driving.distanceKm, durationText: est.driving.duration,
             drivingSummary: est.driving.summary, taxiCost: est.driving.taxiCost,
             publicTransportCost: bt.publicTransportCost || 1,
@@ -1796,10 +1847,7 @@ const Results = {
     // Re-render this city card in-place
     const oldCard = document.querySelector(`.timeline-card[data-type="city"][data-index="${cityIndex}"]`);
     if (oldCard) {
-      const newCard = Components.createCityCard(
-        city, cityIndex,
-        (idx, nights) => this.onNightsChange(idx, nights)
-      );
+      const newCard = Components.createCityCard(city, cityIndex);
       oldCard.replaceWith(newCard);
     }
 

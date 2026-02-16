@@ -136,11 +136,19 @@ const Components = {
     const schedHtml = (schedStart && schedEnd)
       ? `<span class="card-schedule">${schedStart} &rarr; ${schedEnd}</span>` : '';
 
+    // Google Maps directions link
+    const mapsUrl = (transfer.originLat && transfer.destLat)
+      ? `https://www.google.com/maps/dir/${encodeURIComponent(transfer.from)}/@${transfer.originLat},${transfer.originLng}/${encodeURIComponent(transfer.to)}/@${transfer.destLat},${transfer.destLng}`
+      : null;
+    const mapsLinkHtml = mapsUrl
+      ? `<a class="transfer-maps-link" href="${Utils.escapeHtml(mapsUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open in Google Maps">&#x1F5FA;</a>`
+      : '';
+
     card.innerHTML = `
       <div class="card-header" aria-expanded="false" onclick="Components.toggleCard(this)">
         <div class="card-icon">${icon}</div>
         <div class="card-title">
-          <h4>${Utils.escapeHtml(transfer.from)} &rarr; ${Utils.escapeHtml(transfer.to)}</h4>
+          <h4>${Utils.escapeHtml(transfer.from)} &rarr; ${Utils.escapeHtml(transfer.to)} ${mapsLinkHtml}</h4>
           <span class="card-subtitle">${transfer.durationText || 'Transfer'}${transfer.distanceKm ? ' &middot; ~' + Math.round(transfer.distanceKm) + ' km' : ''}</span>
           ${schedHtml}
         </div>
@@ -677,7 +685,7 @@ const Components = {
       </div>`;
   },
 
-  createCityCard(city, index, onNightsChange) {
+  createCityCard(city, index) {
     const card = document.createElement('div');
     card.className = 'timeline-card';
     card.dataset.type = 'city';
@@ -824,18 +832,16 @@ const Components = {
           ${datesHtml}
           <div class="city-edit-row">
             <label>Nights</label>
-            <div id="nights-stepper-${index}"></div>
+            <button class="nights-edit-btn" onclick="event.stopPropagation(); Results.onNightsChange(${index})">
+              <span class="nights-edit-value">${city.nights}</span> night${city.nights !== 1 ? 's' : ''}
+              <span class="nights-edit-icon">&#9998;</span>
+            </button>
           </div>
           ${hotelOptionsHtml}
           ${mealHtml}
         </div>
       </div>
     `;
-
-    const stepperContainer = card.querySelector(`#nights-stepper-${index}`);
-    stepperContainer.appendChild(
-      Components.createStepper(city.nights, 0, 14, (val) => onNightsChange(index, val), 'nights')
-    );
 
     return card;
   },

@@ -787,6 +787,80 @@
   color: #fff;
 }
 .confirm-btn.confirm:hover { background: var(--color-primary-dark); }
+.confirm-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Nights edit button (replaces inline stepper) ── */
+.nights-edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1px solid var(--glass-border-strong);
+  border-radius: var(--radius-glass-sm);
+  background: var(--glass-bg);
+  font-size: 0.85rem;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+.nights-edit-btn:hover {
+  background: var(--glass-bg-strong);
+  border-color: var(--color-primary);
+}
+.nights-edit-value {
+  font-weight: 700;
+  color: var(--color-primary);
+}
+.nights-edit-icon {
+  font-size: 0.75rem;
+  opacity: 0.5;
+}
+
+/* ── Nights popup stepper ── */
+.nights-popup-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin: 20px 0;
+}
+.nights-popup-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border-strong);
+  background: var(--glass-bg);
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+.nights-popup-btn:hover:not(:disabled) {
+  background: var(--glass-bg-strong);
+  border-color: var(--color-primary);
+}
+.nights-popup-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+.nights-popup-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  min-width: 48px;
+  text-align: center;
+}
+.nights-popup-label {
+  font-size: 0.9rem;
+  color: var(--color-text-secondary);
+}
 
 /* ── Error state ── */
 .error-banner {
