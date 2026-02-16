@@ -817,26 +817,45 @@ const Components = {
       </div>`;
     }
 
-    // Build hotel options HTML
+    // Build hotel options HTML — two columns: Lowest Price + Highest Rated
     let hotelOptionsHtml = '';
     const hotelOpts = city.hotelOptions || [];
+    const selectedId = city.selectedHotelId;
     if (hotelOpts.length > 0) {
-      const topHtml = this._buildHotelOptionRow(hotelOpts[0], index, 0, true);
-      let moreHtml = '';
-      const remaining = hotelOpts.slice(1);
-      if (remaining.length > 0) {
-        const moreRows = remaining.map((h, hi) => this._buildHotelOptionRow(h, index, hi + 1, false)).join('');
-        moreHtml = `
-          <div class="hotel-more-toggle" onclick="Components.toggleMoreOptions(this)">
-            &#9662; ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
-          </div>
-          <div class="hotel-more-list">${moreRows}</div>
-        `;
-      }
-      hotelOptionsHtml = `
-        <div class="hotel-options">${topHtml}</div>
-        ${moreHtml}
-      `;
+      const byPrice = [...hotelOpts].sort((a, b) => a.pricePerNight - b.pricePerNight).slice(0, 10);
+      const byRating = [...hotelOpts].filter(h => h.rating).sort((a, b) => b.rating - a.rating || (b.reviewCount || 0) - (a.reviewCount || 0)).slice(0, 10);
+
+      const buildColumn = (list, label) => {
+        if (list.length === 0) return '';
+        const top = list[0];
+        const topIdx = hotelOpts.indexOf(top);
+        const topHtml = this._buildHotelOptionRow(top, index, topIdx, top.hotelId === selectedId);
+        let moreHtml = '';
+        const remaining = list.slice(1);
+        if (remaining.length > 0) {
+          const moreRows = remaining.map(h => {
+            const idx = hotelOpts.indexOf(h);
+            return this._buildHotelOptionRow(h, index, idx, h.hotelId === selectedId);
+          }).join('');
+          moreHtml = `
+            <div class="hotel-more-toggle" onclick="Components.toggleMoreOptions(this)">
+              &#9662; ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
+            </div>
+            <div class="hotel-more-list">${moreRows}</div>
+          `;
+        }
+        return `<div class="hotel-column">
+          <div class="hotel-column-label">${label}</div>
+          <div class="hotel-options">${topHtml}</div>
+          ${moreHtml}
+        </div>`;
+      };
+
+      const priceCol = buildColumn(byPrice, 'Lowest Price');
+      const ratingCol = byRating.length > 0 ? buildColumn(byRating, 'Highest Rated') : '';
+      hotelOptionsHtml = ratingCol
+        ? `<div class="hotel-columns">${priceCol}${ratingCol}</div>`
+        : priceCol;
     } else {
       hotelOptionsHtml = `
         <div class="hotel-price-note">
@@ -846,12 +865,27 @@ const Components = {
       `;
     }
 
+    // Selected hotel info for header
+    const sel = city.selectedHotel || {};
+    const headerPhotoHtml = sel.photoUrl
+      ? `<img class="city-header-photo" src="${Utils.escapeHtml(sel.photoUrl)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'card-icon\\'>&#127976;</div>'">`
+      : '<div class="card-icon">&#127976;</div>';
+    const headerLinkHtml = sel.listingUrl
+      ? `<a class="hotel-option-link" href="${Utils.escapeHtml(sel.listingUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Booking.com">&#8599;</a>`
+      : '';
+    let headerRatingHtml = '';
+    if (sel.rating) {
+      const revText = sel.reviewCount ? `(${sel.reviewCount.toLocaleString()})` : '';
+      headerRatingHtml = `<span class="rating-score">${sel.rating.toFixed(1)}</span>${revText ? `<span class="rating-reviews">${revText}</span>` : ''}`;
+    }
+    const headerMeta = [sel.distance ? `${sel.distance.toFixed(1)} km` : '', sel.roomType || ''].filter(Boolean).join(' \u00b7 ');
+
     card.innerHTML = `
       <div class="card-header" aria-expanded="false" onclick="Components.toggleCard(this)">
-        <div class="card-icon">&#127976;</div>
+        ${headerPhotoHtml}
         <div class="card-title">
-          <h4>${Utils.escapeHtml(hotelNameDisplay)}, ${Utils.escapeHtml(city.name)}</h4>
-          <span class="card-subtitle">${city.nights} night${city.nights !== 1 ? 's' : ''} stay &middot; ${Utils.formatCurrency(nightlyRate, 'EUR')}/night${rooms > 1 ? ` &middot; ${rooms} rooms` : ''}</span>
+          <h4>${Utils.escapeHtml(hotelNameDisplay)} ${headerLinkHtml}</h4>
+          <span class="card-subtitle">${city.nights} night${city.nights !== 1 ? 's' : ''} stay &middot; ${Utils.formatCurrency(nightlyRate, 'EUR')}/night${headerRatingHtml ? ` &middot; <span class="hotel-option-rating">${headerRatingHtml}</span>` : ''}${headerMeta ? ` &middot; ${Utils.escapeHtml(headerMeta)}` : ''}</span>
           ${schedHtml}
         </div>
         <div class="card-cost" id="city-cost-${index}">${Utils.formatCurrency(nightlyRate * city.nights * rooms, 'EUR')}</div>

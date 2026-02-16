@@ -676,8 +676,13 @@ const Results = {
           });
         }
       }
-      hotelOptions.sort((a, b) => a.pricePerNight - b.pricePerNight);
-      if (hotelOptions.length > 10) hotelOptions.length = 10;
+      // Filter out unverified hotels (no rating & no reviews) when any verified option exists
+      const verified = hotelOptions.filter(h => h.rating || h.reviewCount);
+      const filtered = verified.length >= 1 ? verified : hotelOptions;
+      // Sort by price (cheapest first) — keep up to 20 for dual-column display
+      filtered.sort((a, b) => a.pricePerNight - b.pricePerNight);
+      hotelOptions.length = 0;
+      hotelOptions.push(...filtered.slice(0, 20));
 
       let hotelBasePrice, hotelPriceSource;
       if (hotelOptions.length > 0) {
@@ -718,6 +723,7 @@ const Results = {
         hotelName: hotelOptions.length > 0 ? hotelOptions[0].name : (firstHotel?.name || null),
         hotelOptions,
         selectedHotel: hotelOptions[0] || null,
+        selectedHotelId: hotelOptions[0]?.hotelId || null,
         mealCosts,
       };
     });
@@ -1814,14 +1820,9 @@ const Results = {
 
     const selected = city.hotelOptions[optionIndex];
     city.selectedHotel = selected;
+    city.selectedHotelId = selected.hotelId;
     city.hotelBasePrice = selected.pricePerNight;
     city.hotelName = selected.name;
-
-    // Move selected to top
-    if (optionIndex !== 0) {
-      city.hotelOptions.splice(optionIndex, 1);
-      city.hotelOptions.unshift(selected);
-    }
 
     // Update adjacent transfer labels to reflect new hotel name
     const newHotelLabel = selected.name ? `${selected.name}, ${city.name}` : `${city.name} Hotel`;

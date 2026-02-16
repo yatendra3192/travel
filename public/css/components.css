@@ -443,6 +443,14 @@
   flex-shrink: 0;
 }
 
+.city-header-photo {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-glass-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 .card-title {
   flex: 1;
   min-width: 0;
@@ -1087,6 +1095,7 @@
 .flight-option {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 14px;
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-glass-md);
@@ -1243,8 +1252,8 @@
   gap: 6px;
   padding: 8px 12px 4px;
   border-top: 1px solid var(--glass-border);
-  margin-top: 8px;
-  width: 100%;
+  margin-top: 0;
+  flex-basis: 100%;
 }
 .transit-leg-card {
   display: flex;
@@ -1336,11 +1345,26 @@
 }
 
 /* ── Hotel option rows (city cards) ── */
+.hotel-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.hotel-column-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-secondary);
+  padding: 4px 0 6px;
+}
+
 .hotel-options {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-top: 12px;
 }
 
 .hotel-option {
