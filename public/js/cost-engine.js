@@ -15,6 +15,7 @@ const CostEngine = {
   },
 
   CHILD_FLIGHT_FACTOR: 0.75,
+  INFANT_FLIGHT_FACTOR: 0.10,
   CHILD_MEAL_FACTOR: 0.6,
 
   FALLBACK_HOTEL_PRICES: {
@@ -88,10 +89,12 @@ const CostEngine = {
 
   calcFlights(plan) {
     let low = 0, high = 0;
+    const infants = plan.infants || 0;
     for (const leg of plan.flightLegs) {
       // Ground transport mode (user switched from flight)
       if (leg.selectedMode && leg.selectedMode !== 'flight' && leg.groundRoutes) {
         const totalPassengers = plan.adults + plan.children;
+        // Infants ride free on ground transport (on lap / no seat)
         if (leg.selectedMode === 'transit') {
           const cost = leg.groundRoutes.transitRoutes?.[0]?.publicTransportCost || 0;
           low += cost * totalPassengers;
@@ -111,6 +114,7 @@ const CostEngine = {
         const totalPassengers = plan.adults + plan.children;
         low += trainCost * totalPassengers;
         high += trainCost * 1.3 * totalPassengers; // 30% buffer
+        // Infants free on trains/buses
         continue;
       }
 
@@ -120,7 +124,8 @@ const CostEngine = {
       if (leg.selectedOffer) {
         const p = leg.selectedOffer.price;
         const childP = p * this.CHILD_FLIGHT_FACTOR;
-        const legCost = (p * plan.adults) + (childP * plan.children);
+        const infantP = p * this.INFANT_FLIGHT_FACTOR;
+        const legCost = (p * plan.adults) + (childP * plan.children) + (infantP * infants);
         low += legCost;
         high += legCost;
       } else {
@@ -132,9 +137,11 @@ const CostEngine = {
         const adultHigh = comfortable;
         const childLow = adultLow * this.CHILD_FLIGHT_FACTOR;
         const childHigh = adultHigh * this.CHILD_FLIGHT_FACTOR;
+        const infantLow = adultLow * this.INFANT_FLIGHT_FACTOR;
+        const infantHigh = adultHigh * this.INFANT_FLIGHT_FACTOR;
 
-        low += (adultLow * plan.adults) + (childLow * plan.children);
-        high += (adultHigh * plan.adults) + (childHigh * plan.children);
+        low += (adultLow * plan.adults) + (childLow * plan.children) + (infantLow * infants);
+        high += (adultHigh * plan.adults) + (childHigh * plan.children) + (infantHigh * infants);
       }
     }
     return { low: Math.round(low), high: Math.round(high) };

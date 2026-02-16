@@ -51,7 +51,7 @@
 
         <!-- Travelers -->
         <div class="form-row">
-          <div class="form-group half">
+          <div class="form-group third">
             <label>Adults</label>
             <div class="stepper">
               <button type="button" class="stepper-btn minus" data-target="adults-count">-</button>
@@ -59,12 +59,20 @@
               <button type="button" class="stepper-btn plus" data-target="adults-count">+</button>
             </div>
           </div>
-          <div class="form-group half">
-            <label>Children <span class="age-hint">(2-11 yrs)</span></label>
+          <div class="form-group third">
+            <label>Children <span class="age-hint">(2-11)</span></label>
             <div class="stepper">
               <button type="button" class="stepper-btn minus" data-target="children-count">-</button>
               <span id="children-count" class="stepper-value">0</span>
               <button type="button" class="stepper-btn plus" data-target="children-count">+</button>
+            </div>
+          </div>
+          <div class="form-group third">
+            <label>Infants <span class="age-hint">(0-2)</span></label>
+            <div class="stepper">
+              <button type="button" class="stepper-btn minus" data-target="infants-count">-</button>
+              <span id="infants-count" class="stepper-value">0</span>
+              <button type="button" class="stepper-btn plus" data-target="infants-count">+</button>
             </div>
           </div>
         </div>
@@ -128,6 +136,8 @@
             <div id="header-adults-stepper"></div>
             <span class="header-trav-label">Children</span>
             <div id="header-children-stepper"></div>
+            <span class="header-trav-label">Infants</span>
+            <div id="header-infants-stepper"></div>
           </div>
         </div>
         <div class="header-bottom-right">

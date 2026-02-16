@@ -211,10 +211,12 @@ const Landing = {
         const valueEl = document.getElementById(targetId);
         let val = parseInt(valueEl.textContent);
 
+        const maxMap = { 'adults-count': 9, 'children-count': 6, 'infants-count': 4 };
+        const minMap = { 'adults-count': 1, 'children-count': 0, 'infants-count': 0 };
         if (btn.classList.contains('plus')) {
-          val = Math.min(val + 1, targetId === 'adults-count' ? 9 : 6);
+          val = Math.min(val + 1, maxMap[targetId] || 6);
         } else {
-          val = Math.max(val - 1, targetId === 'adults-count' ? 1 : 0);
+          val = Math.max(val - 1, minMap[targetId] || 0);
         }
 
         valueEl.textContent = val;
@@ -249,6 +251,7 @@ const Landing = {
         startTime: '00:00',
         adults: parseInt(document.getElementById('adults-count').textContent),
         children: parseInt(document.getElementById('children-count').textContent),
+        infants: parseInt(document.getElementById('infants-count').textContent),
       };
 
       App.startCalculation(tripData);

@@ -219,21 +219,28 @@ const Results = {
     if (timeEl) timeEl.value = tripData.startTime || '00:00';
 
     // Populate header travelers steppers
-    this._renderHeaderTravelers(tripData.adults, tripData.children);
+    this._renderHeaderTravelers(tripData.adults, tripData.children, tripData.infants);
   },
 
-  _renderHeaderTravelers(adults, children) {
+  _renderHeaderTravelers(adults, children, infants) {
     const adultsContainer = document.getElementById('header-adults-stepper');
     const childrenContainer = document.getElementById('header-children-stepper');
+    const infantsContainer = document.getElementById('header-infants-stepper');
     if (!adultsContainer || !childrenContainer) return;
     adultsContainer.innerHTML = '';
     childrenContainer.innerHTML = '';
+    if (infantsContainer) infantsContainer.innerHTML = '';
     adultsContainer.appendChild(
-      Components.createStepper(adults, 1, 9, (val) => this.onTravelersChange(val, this.plan?.children || 0), 'adults')
+      Components.createStepper(adults, 1, 9, (val) => this.onTravelersChange(val, this.plan?.children || 0, this.plan?.infants || 0), 'adults')
     );
     childrenContainer.appendChild(
-      Components.createStepper(children, 0, 6, (val) => this.onTravelersChange(this.plan?.adults || 2, val), 'children')
+      Components.createStepper(children, 0, 6, (val) => this.onTravelersChange(this.plan?.adults || 2, val, this.plan?.infants || 0), 'children')
     );
+    if (infantsContainer) {
+      infantsContainer.appendChild(
+        Components.createStepper(infants || 0, 0, 4, (val) => this.onTravelersChange(this.plan?.adults || 2, this.plan?.children || 0, val), 'infants')
+      );
+    }
   },
 
   async generateTripPlan(tripData) {
@@ -713,6 +720,7 @@ const Results = {
         hotelPriceSource,
         adults: tripData.adults,
         children: tripData.children,
+        infants: tripData.infants || 0,
         hotels: hotelResults[i]?.hotels || [],
         lat: dest.lat,
         lng: dest.lng,
@@ -816,6 +824,7 @@ const Results = {
       transfers: [],
       adults: tripData.adults,
       children: tripData.children,
+      infants: tripData.infants || 0,
       departureDate: tripData.departureDate,
       currency: 'EUR',
     };
@@ -1894,10 +1903,11 @@ const Results = {
     `;
   },
 
-  onTravelersChange(adults, children) {
+  onTravelersChange(adults, children, infants) {
     this.plan.adults = adults;
     this.plan.children = children;
-    this.plan.cities.forEach(c => { c.adults = adults; c.children = children; });
+    this.plan.infants = infants || 0;
+    this.plan.cities.forEach(c => { c.adults = adults; c.children = children; c.infants = infants || 0; });
     this.recalculateAndRenderCost();
   },
 

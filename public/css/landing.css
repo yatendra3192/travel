@@ -101,6 +101,11 @@
   margin-bottom: 0;
 }
 
+.form-group.third {
+  flex: 1;
+  margin-bottom: 0;
+}
+
 .age-hint {
   font-weight: 400;
   color: var(--color-text-light);
