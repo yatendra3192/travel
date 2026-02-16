@@ -1492,6 +1492,13 @@
 }
 
 .hotel-option-name {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+.hotel-option-name-text {
   font-weight: 600;
   font-size: 0.88rem;
   color: var(--color-text);

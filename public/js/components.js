@@ -713,7 +713,7 @@ const Components = {
       <div class="hotel-option${isSelected ? ' selected' : ''}" onclick="Results.selectHotelOption(${cityIndex}, ${optionIndex})">
         ${photoHtml}
         <div class="hotel-option-info">
-          <div class="hotel-option-name">${Utils.escapeHtml(hotel.name || 'Hotel')}${linkHtml}${mapsHtml}</div>
+          <div class="hotel-option-name"><span class="hotel-option-name-text">${Utils.escapeHtml(hotel.name || 'Hotel')}</span>${linkHtml}${mapsHtml}</div>
           ${ratingHtml}
           ${metaParts ? `<div class="hotel-option-meta">${Utils.escapeHtml(metaParts)}</div>` : ''}
         </div>
