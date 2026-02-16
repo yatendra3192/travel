@@ -34,7 +34,7 @@ Two services from the same GitHub repo, auto-deploy on push to `main`:
 | **satisfied-liberation** (Python) | `/python-api` | `Dockerfile` | No — internal only |
 
 **Environment variables:**
-- Node service: `GOOGLE_API_KEY`, `PYTHON_API_URL` (points to Python service's private Railway URL)
+- Node service: `GOOGLE_API_KEY`, `AIRLABS_API_KEY`, `PYTHON_API_URL` (points to Python service's private Railway URL)
 - Python service: `PORT`
 
 Railway configs: `railway.json` (Node) and `python-api/railway.json` (Python) — healthchecks, restart policies.
@@ -47,6 +47,7 @@ Three-tier system with no build tools or bundler:
 Browser (vanilla JS SPA)
   → Node/Express server (port 3000)
       → Google Maps/Places/Directions APIs (for routing, geocoding, autocomplete)
+      → AirLabs API (for dynamic IATA airport code resolution)
       → Python FastAPI service (port 5000)
           → Playwright browser pool
           → Google Flights (scrapes flight prices)
@@ -96,7 +97,7 @@ Express server at `server/server.js`. Key routes:
 
 | Route | Purpose | Data Source |
 |-------|---------|-------------|
-| `/api/resolve-iata?keyword=&lat=&lng=` | Airport code lookup | Static `iata-data.js` + Google Geocoding |
+| `/api/resolve-iata?keyword=&lat=&lng=` | Airport code lookup | AirLabs nearby API + Google Geocoding |
 | `/api/flights?origin=&destination=&date=` | Flight search | Python API → Google Flights |
 | `/api/hotels/list-by-geocode?latitude=&longitude=` | Hotel search | Python API → Booking.com |
 | `/api/hotels/offers?hotelIds=&checkIn=&checkOut=` | Hotel pricing | Python API → Booking.com |
@@ -104,6 +105,8 @@ Express server at `server/server.js`. Key routes:
 | `/api/transfer-estimate?originLat=&originLng=&destLat=&destLng=` | Transfer routing + costs | Google Directions API |
 
 `pythonApiGet(endpoint, params)` proxies to Python API (configured via `PYTHON_API_URL` env var, defaults to `http://localhost:5000`). `cache.js` provides a simple in-memory Map-based TTL cache (7 days for IATA/transfers).
+
+**Airport resolution via AirLabs:** The `/api/resolve-iata` endpoint uses the AirLabs nearby API (`airlabs.co/api/v9/nearby`) to dynamically find the nearest major commercial airport for any city worldwide. Uses the `popularity` field (passenger traffic proxy) to filter out heliports, air bases, and tiny airstrips — picks the busiest hub within 100km, or the nearest major airport within 200km. Falls back to smaller regional airports (popularity >= 1000) if no major hub is found. Results are cached for 7 days. Free tier: 1,000 requests/month.
 
 **Dead code:** `amadeus-auth.js` is a legacy module from when the project used the Amadeus API — no longer imported or used. Contains hardcoded credentials that should be removed.
 
@@ -135,7 +138,6 @@ Config in `config.py` — all timeouts, rate limits, cache sizes, browser pool s
 
 ## Static Data Files
 
-- `server/iata-data.js` — Airport/city IATA code database (fallback when Google Geocoding unavailable)
 - `server/meal-data.js` — Meal costs by city/country (breakfast/lunch/dinner at budget/mid/luxury tiers)
 
 ## CSS Conventions
