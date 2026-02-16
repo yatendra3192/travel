@@ -293,6 +293,35 @@ const Components = {
     const fareBadge = route.fareSource === 'google'
       ? '<span class="fare-badge live">Google fare</span>'
       : '<span class="fare-badge est">est.</span>';
+
+    // Build individual leg cards for each transit segment
+    const transitSteps = (route.steps || []).filter(s => s.mode === 'TRANSIT');
+    let legsHtml = '';
+    if (transitSteps.length > 1) {
+      const vIcons = { BUS: '&#128653;', HEAVY_RAIL: '&#128646;', SUBWAY: '&#x24C2;', COMMUTER_TRAIN: '&#128646;', TRAM: '&#128651;', FERRY: '&#x26F4;' };
+      const vTypes = { BUS: 'Bus', HEAVY_RAIL: 'Train', SUBWAY: 'Metro', COMMUTER_TRAIN: 'Train', TRAM: 'Tram', LIGHT_RAIL: 'Light Rail', FERRY: 'Ferry' };
+      legsHtml = `<div class="transit-legs">` + transitSteps.map(s => {
+        const icon = vIcons[s.vehicleType] || '&#128652;';
+        const type = vTypes[s.vehicleType] || 'Transit';
+        const label = s.lineName ? `${type} ${Utils.escapeHtml(s.lineName)}` : type;
+        const from = Utils.escapeHtml(s.departureStop || '');
+        const to = Utils.escapeHtml(s.arrivalStop || '');
+        return `
+          <div class="transit-leg-card">
+            <div class="transit-leg-icon" style="background:${Utils.sanitizeColor(s.lineColor)};color:${Utils.sanitizeColor(s.lineTextColor)}">${icon}</div>
+            <div class="transit-leg-info">
+              <div class="transit-leg-name">${label}</div>
+              <div class="transit-leg-stops">${from} → ${to}</div>
+              <div class="transit-leg-meta">${Utils.escapeHtml(s.duration)}${s.numStops ? ' · ' + s.numStops + ' stops' : ''}</div>
+            </div>
+            <div class="transit-leg-times">
+              <span>${Utils.escapeHtml(s.departureTime || '')}</span>
+              <span>${Utils.escapeHtml(s.arrivalTime || '')}</span>
+            </div>
+          </div>`;
+      }).join('') + `</div>`;
+    }
+
     return `
       <div class="flight-option${isSelected ? ' selected' : ''}" onclick="Components.selectTransitOption(${legIndex}, ${routeIndex})" data-route-idx="${routeIndex}">
         <div class="flight-option-airline">
@@ -305,7 +334,7 @@ const Components = {
             <div class="flight-option-duration">
               <span class="duration-text">${route.duration}</span>
               <div class="duration-line"></div>
-              <span class="stops-text">${route.summary || 'Transit'}</span>
+              <span class="stops-text">${transitSteps.length > 1 ? transitSteps.length + ' legs' : (route.summary || 'Transit')}</span>
             </div>
             <span class="arr-time">${route.arrivalTime || ''}</span>
           </div>
@@ -314,6 +343,7 @@ const Components = {
           <span class="price-amount">${Utils.formatCurrency(route.publicTransportCost || 0, 'EUR')}</span>
           <span class="price-label">per person ${fareBadge}</span>
         </div>
+        ${legsHtml}
       </div>`;
   },
 

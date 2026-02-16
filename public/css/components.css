@@ -1236,6 +1236,65 @@
   color: var(--color-text-secondary);
 }
 
+/* ── Transit leg cards (multi-leg breakdown) ── */
+.transit-legs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px 4px;
+  border-top: 1px solid var(--glass-border);
+  margin-top: 8px;
+  width: 100%;
+}
+.transit-leg-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-glass-sm);
+}
+.transit-leg-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+.transit-leg-info {
+  flex: 1;
+  min-width: 0;
+}
+.transit-leg-name {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.transit-leg-stops {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.transit-leg-meta {
+  font-size: 0.68rem;
+  color: var(--color-text-muted, #999);
+}
+.transit-leg-times {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text);
+  flex-shrink: 0;
+}
+
 /* More options toggle */
 .flight-more-toggle {
   padding: 6px 16px 10px;

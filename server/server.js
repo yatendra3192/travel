@@ -517,7 +517,7 @@ const PUBLIC_TRANSPORT_RATES = {
 
 app.get('/api/transfer-estimate', async (req, res) => {
   try {
-    const { originLat, originLng, destLat, destLng, country, originText, destText } = req.query;
+    const { originLat, originLng, destLat, destLng, country, originText, destText, departureDate } = req.query;
     if ((!originLat || !originLng || !destLat || !destLng) && !originText && !destText) {
       return res.status(400).json({ error: 'coordinates or text addresses required' });
     }
@@ -534,7 +534,7 @@ app.get('/api/transfer-estimate', async (req, res) => {
       }
     }
 
-    const cacheKey = `transfer:${originText || originLat + ',' + originLng}-${destText || destLat + ',' + destLng}`;
+    const cacheKey = `transfer:${originText || originLat + ',' + originLng}-${destText || destLat + ',' + destLng}-${departureDate || ''}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
 
@@ -549,10 +549,17 @@ app.get('/api/transfer-estimate', async (req, res) => {
     const origin = originText || `${oLat},${oLng}`;
     const dest = destText || `${dLat},${dLng}`;
 
+    // Convert departure date (YYYY-MM-DD) to Unix timestamp (morning 8AM local-ish)
+    let departureTimestamp = null;
+    if (departureDate && /^\d{4}-\d{2}-\d{2}$/.test(departureDate)) {
+      // Use 8AM UTC on the departure date for transit scheduling
+      departureTimestamp = Math.floor(new Date(departureDate + 'T08:00:00Z').getTime() / 1000);
+    }
+
     // Parallel: Google Directions for all 4 modes
     const [drivingData, transitData, walkingData, bicyclingData] = await Promise.all([
       fetchGoogleRaw(origin, dest, 'driving', false),
-      fetchGoogleRaw(origin, dest, 'transit', true),
+      fetchGoogleRaw(origin, dest, 'transit', true, departureTimestamp),
       fetchGoogleRaw(origin, dest, 'walking', false),
       fetchGoogleRaw(origin, dest, 'bicycling', false),
     ]);
@@ -696,12 +703,13 @@ app.get('/api/transfer-estimate', async (req, res) => {
   }
 });
 
-async function fetchGoogleRaw(origin, destination, mode, alternatives) {
+async function fetchGoogleRaw(origin, destination, mode, alternatives, departureTime) {
   try {
     const o = encodeURIComponent(origin);
     const d = encodeURIComponent(destination);
     let url = `https://maps.googleapis.com/maps/api/directions/json?origin=${o}&destination=${d}&mode=${mode}&key=${GOOGLE_API_KEY}`;
     if (alternatives) url += '&alternatives=true';
+    if (departureTime) url += `&departure_time=${departureTime}`;
     const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
     if (!resp.ok) return null;
     const data = await resp.json();

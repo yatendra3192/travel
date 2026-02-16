@@ -29,7 +29,13 @@ const Landing = {
   },
 
   async setupAutocomplete() {
-    await google.maps.importLibrary('places');
+    try {
+      await google.maps.importLibrary('places');
+      this._placesReady = true;
+    } catch (e) {
+      console.warn('Places library not ready, will retry on first search:', e);
+      this._placesReady = false;
+    }
 
     const debouncedFromSearch = Utils.debounce((query) => this.fetchSuggestions(query, 'from'), 300);
     const debouncedToSearch = Utils.debounce((query) => this.fetchSuggestions(query, 'to'), 300);
@@ -78,6 +84,13 @@ const Landing = {
 
   async fetchSuggestions(query, target) {
     try {
+      // Ensure Places library is loaded
+      if (!this._placesReady) {
+        await google.maps.importLibrary('places');
+        this._placesReady = true;
+      }
+
+      // Create a fresh session token if needed
       if (!this.sessionToken) {
         this.sessionToken = new google.maps.places.AutocompleteSessionToken();
       }
@@ -87,14 +100,27 @@ const Landing = {
         sessionToken: this.sessionToken,
       };
 
-      // Both FROM and DESTINATIONS accept any place (cities, landmarks, malls, addresses, etc.)
-
       const { suggestions } = await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions(options);
 
       const dropdown = target === 'from' ? this.fromDropdown : this.toDropdown;
       this.renderDropdown(suggestions || [], dropdown, target);
     } catch (err) {
       console.warn('Autocomplete error:', err);
+      // Reset session token on error — stale tokens can cause failures
+      this.sessionToken = null;
+      // Retry once with a fresh token
+      try {
+        this.sessionToken = new google.maps.places.AutocompleteSessionToken();
+        const { suggestions } = await google.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+          input: query,
+          sessionToken: this.sessionToken,
+        });
+        const dropdown = target === 'from' ? this.fromDropdown : this.toDropdown;
+        this.renderDropdown(suggestions || [], dropdown, target);
+      } catch (retryErr) {
+        console.warn('Autocomplete retry failed:', retryErr);
+        this.sessionToken = null;
+      }
     }
   },
 

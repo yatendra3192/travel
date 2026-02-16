@@ -366,7 +366,7 @@ const Results = {
           if (leg.legType !== 'flight') return Promise.resolve(null);
           const f = leg._grFrom, t = leg._grTo;
           if (!f?.lat || !f?.lng || !t?.lat || !t?.lng) return Promise.resolve(null);
-          return Api.getTransferEstimate(f.lat, f.lng, t.lat, t.lng, t.country)
+          return Api.getTransferEstimate(f.lat, f.lng, t.lat, t.lng, t.country, null, null, leg.date)
             .catch(() => null);
         })
       );
@@ -377,21 +377,33 @@ const Results = {
           if (leg.legType !== 'train') return Promise.resolve(null);
           const f = leg._grFrom, t = leg._grTo;
           if (!f?.lat || !f?.lng || !t?.lat || !t?.lng) return Promise.resolve(null);
-          return Api.getTransferEstimate(f.lat, f.lng, t.lat, t.lng, t.country)
+          return Api.getTransferEstimate(f.lat, f.lng, t.lat, t.lng, t.country, null, null, leg.date)
             .catch(() => null);
         })
       );
 
-      // Wait for all four
-      const [flightResults, hotelResults, groundRouteResults, trainRouteResults] = await Promise.all([flightSearchPromise, hotelSearchPromise, groundRoutePromise, trainRoutePromise]);
+      // Meal costs only need IATA codes — start them immediately in parallel with flights/hotels
+      Components.updateLoadingStep(3, 'active');
+      const mealCostPromise = Promise.all(
+        tripData.destinations.map((dest, i) => {
+          const iata = iataResults[i + 1];
+          return Api.getMealCosts(iata.cityCode, iata.country).catch(err => {
+            console.warn(`Meal costs failed for ${iata.cityCode}:`, err);
+            return { cityMeals: null };
+          });
+        })
+      );
+
+      // Wait for flights + hotels + ground routes + train routes + meals (all in parallel)
+      const [flightResults, hotelResults, groundRouteResults, trainRouteResults, mealCostResults] = await Promise.all([
+        flightSearchPromise, hotelSearchPromise, groundRoutePromise, trainRoutePromise, mealCostPromise
+      ]);
       if (abortSignal.aborted) { this._generating = false; overlay.style.display = 'none'; return; }
       Components.updateLoadingStep(1, 'done');
       Components.updateLoadingStep(2, 'done');
+      Components.updateLoadingStep(3, 'done');
 
-      // Step 3: Fetch meal costs for all cities + layovers (parallel)
-      Components.updateLoadingStep(3, 'active');
-
-      // Collect all layovers from cheapest flight offers for meal cost calculation
+      // Layover meals need flight results (for layover airports) — quick local data fetch
       const allLayovers = [];
       flightLegs.forEach((leg, i) => {
         if (leg.legType === 'train' || leg.legType === 'skip') return;
@@ -401,40 +413,26 @@ const Results = {
         }
       });
 
-      const mealCostPromises = tripData.destinations.map((dest, i) => {
-        const iata = iataResults[i + 1];
-        return Api.getMealCosts(iata.cityCode, iata.country).catch(err => {
-          console.warn(`Meal costs failed for ${iata.cityCode}:`, err);
-          return { cityMeals: null };
-        });
-      });
-
-      // Also fetch layover meal costs
-      const layoverMealPromise = allLayovers.length > 0
-        ? Api.getMealCosts(null, null, allLayovers).catch(() => ({ layoverMeals: [] }))
-        : Promise.resolve({ layoverMeals: [] });
-
-      const [mealCostResults, layoverMealResult] = await Promise.all([
-        Promise.all(mealCostPromises),
-        layoverMealPromise,
+      // Hotel offers need hotel list results — start immediately after hotels finish
+      Components.updateLoadingStep(4, 'active');
+      const [hotelOffers, layoverMealResult] = await Promise.all([
+        Promise.all(
+          tripData.destinations.map((dest, i) => {
+            const hotels = hotelResults[i]?.hotels || [];
+            if (hotels.length === 0) return Promise.resolve({ offers: [] });
+            const sampleIds = hotels.slice(0, 20).map(h => h.hotelId);
+            const checkIn = this.getCityCheckIn(tripData, iataResults, i);
+            const cityNights = tripData.destinations[i].nights || 1;
+            const checkOut = Utils.addDays(checkIn, Math.max(1, cityNights));
+            return Api.getHotelOffers(sampleIds, checkIn, checkOut, tripData.adults)
+              .catch(() => ({ offers: [] }));
+          })
+        ),
+        allLayovers.length > 0
+          ? Api.getMealCosts(null, null, allLayovers).catch(() => ({ layoverMeals: [] }))
+          : Promise.resolve({ layoverMeals: [] }),
       ]);
       if (abortSignal.aborted) { this._generating = false; overlay.style.display = 'none'; return; }
-      Components.updateLoadingStep(3, 'done');
-
-      // Step 4: Hotel offers for pricing
-      Components.updateLoadingStep(4, 'active');
-      const hotelOffers = await Promise.all(
-        tripData.destinations.map((dest, i) => {
-          const hotels = hotelResults[i]?.hotels || [];
-          if (hotels.length === 0) return Promise.resolve({ offers: [] });
-          const sampleIds = hotels.slice(0, 20).map(h => h.hotelId);
-          const checkIn = this.getCityCheckIn(tripData, iataResults, i);
-          const cityNights = tripData.destinations[i].nights || 1;
-          const checkOut = Utils.addDays(checkIn, Math.max(1, cityNights));
-          return Api.getHotelOffers(sampleIds, checkIn, checkOut, tripData.adults)
-            .catch(() => ({ offers: [] }));
-        })
-      );
       Components.updateLoadingStep(4, 'done');
 
       // Step 5: Transfer costs via Google Directions (now with actual hotel coords + bidirectional)

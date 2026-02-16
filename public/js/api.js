@@ -70,7 +70,7 @@ const Api = {
     return resp.json();
   },
 
-  async getTransferEstimate(originLat, originLng, destLat, destLng, country, originText, destText) {
+  async getTransferEstimate(originLat, originLng, destLat, destLng, country, originText, destText, departureDate) {
     const params = new URLSearchParams({
       originLat: String(originLat),
       originLng: String(originLng),
@@ -80,6 +80,7 @@ const Api = {
     });
     if (originText) params.set('originText', originText);
     if (destText) params.set('destText', destText);
+    if (departureDate) params.set('departureDate', departureDate);
     const resp = await fetch(`/api/transfer-estimate?${params}`);
     if (!resp.ok) return null;
     return resp.json();
