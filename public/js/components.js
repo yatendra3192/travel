@@ -675,7 +675,7 @@ const Components = {
       : `&#9652; hide options`;
   },
 
-  _buildHotelOptionRow(hotel, cityIndex, optionIndex, isSelected) {
+  _buildHotelOptionRow(hotel, cityIndex, optionIndex, isSelected, city) {
     const distanceText = hotel.distance ? `${hotel.distance.toFixed(1)} km` : '';
     const roomText = hotel.roomType || '';
     const metaParts = [distanceText, roomText].filter(Boolean).join(' \u00b7 ');
@@ -695,16 +695,25 @@ const Components = {
       </div>`;
     }
 
-    // Listing link
+    // Listing link (Booking.com)
     const linkHtml = hotel.listingUrl
       ? `<a class="hotel-option-link" href="${Utils.escapeHtml(hotel.listingUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Booking.com">&#8599;</a>`
       : '';
+
+    // Google Maps link: city center → hotel
+    let mapsHtml = '';
+    if (city && city.lat && city.lng && hotel.name) {
+      const origin = `${city.lat},${city.lng}`;
+      const dest = encodeURIComponent(`${hotel.name}, ${city.name || ''}`);
+      const mapsUrl = `https://www.google.com/maps/dir/${origin}/${dest}`;
+      mapsHtml = `<a class="hotel-option-link" href="${mapsUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Google Maps">&#128506;</a>`;
+    }
 
     return `
       <div class="hotel-option${isSelected ? ' selected' : ''}" onclick="Results.selectHotelOption(${cityIndex}, ${optionIndex})">
         ${photoHtml}
         <div class="hotel-option-info">
-          <div class="hotel-option-name">${Utils.escapeHtml(hotel.name || 'Hotel')}${linkHtml}</div>
+          <div class="hotel-option-name">${Utils.escapeHtml(hotel.name || 'Hotel')}${linkHtml}${mapsHtml}</div>
           ${ratingHtml}
           ${metaParts ? `<div class="hotel-option-meta">${Utils.escapeHtml(metaParts)}</div>` : ''}
         </div>
@@ -829,13 +838,13 @@ const Components = {
         if (list.length === 0) return '';
         const top = list[0];
         const topIdx = hotelOpts.indexOf(top);
-        const topHtml = this._buildHotelOptionRow(top, index, topIdx, top.hotelId === selectedId);
+        const topHtml = this._buildHotelOptionRow(top, index, topIdx, top.hotelId === selectedId, city);
         let moreHtml = '';
         const remaining = list.slice(1);
         if (remaining.length > 0) {
           const moreRows = remaining.map(h => {
             const idx = hotelOpts.indexOf(h);
-            return this._buildHotelOptionRow(h, index, idx, h.hotelId === selectedId);
+            return this._buildHotelOptionRow(h, index, idx, h.hotelId === selectedId, city);
           }).join('');
           moreHtml = `
             <div class="hotel-more-toggle" onclick="Components.toggleMoreOptions(this)">
