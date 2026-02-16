@@ -3,7 +3,7 @@ const cors = require('cors');
 const crypto = require('crypto');
 const path = require('path');
 const { getCached, setCache } = require('./cache');
-const { getFallbackIata, getNoAirportCity, getNearestAirportByCoords } = require('./iata-data');
+// iata-data.js no longer used — AirLabs API handles airport resolution dynamically
 const { getLayoverMealCost, getCityMealCosts } = require('./meal-data');
 const rateLimit = require('express-rate-limit');
 
@@ -13,6 +13,7 @@ if (!GOOGLE_API_KEY) {
   process.exit(1);
 }
 const PYTHON_API_BASE = process.env.PYTHON_API_URL || 'http://localhost:5000';
+const AIRLABS_API_KEY = process.env.AIRLABS_API_KEY || 'afa16b56-229a-4936-955e-53ab521c4bf0';
 
 const app = express();
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
@@ -121,6 +122,65 @@ async function withRetry(fn, { retries = 2, baseDelay = 1000, description = 'API
   }
 }
 
+// ── Helper: Find nearest major airport via AirLabs API ──
+// Uses the "popularity" field to skip heliports, air bases, and tiny strips.
+// Picks the most popular airport within 100km, or the nearest major one within 200km.
+async function findNearestAirportAirlabs(lat, lng) {
+  if (!AIRLABS_API_KEY) return null;
+  try {
+    const url = `https://airlabs.co/api/v9/nearby?lat=${lat}&lng=${lng}&distance=200&api_key=${AIRLABS_API_KEY}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) {
+      console.warn(`[AirLabs] HTTP ${resp.status}`);
+      return null;
+    }
+    const data = await resp.json();
+    if (!data.response || !data.response.airports || data.response.airports.length === 0) {
+      return null;
+    }
+
+    // Filter to airports with IATA codes and real commercial traffic (popularity >= 10000)
+    const candidates = data.response.airports.filter(a => a.iata_code && (a.popularity || 0) >= 10000);
+
+    let airport = null;
+    if (candidates.length > 0) {
+      // Among nearby airports (<100km), pick the most popular (= busiest hub)
+      const nearby = candidates.filter(a => (a.distance || 999) < 100);
+      if (nearby.length > 0) {
+        airport = nearby.reduce((best, a) => (a.popularity || 0) > (best.popularity || 0) ? a : best);
+      } else {
+        // All major airports are far — pick the closest one
+        airport = candidates[0];
+      }
+    }
+
+    // If no major airport found, take the nearest with IATA code and popularity >= 1000
+    // (covers smaller regional airports that still have scheduled flights)
+    if (!airport) {
+      airport = data.response.airports.find(a => a.iata_code && (a.popularity || 0) >= 1000);
+    }
+
+    if (!airport) return null;
+
+    const distanceKm = airport.distance || haversineKm(lat, lng, airport.lat, airport.lng);
+    console.log(`[AirLabs] Found ${airport.iata_code} (${airport.name}) pop=${airport.popularity} at ${Math.round(distanceKm)}km`);
+
+    return {
+      airportCode: airport.iata_code,
+      cityCode: airport.city_code || airport.iata_code,
+      airportName: airport.name,
+      country: airport.country_code,
+      lat: airport.lat,
+      lng: airport.lng,
+      distanceKm,
+      hasAirport: distanceKm < 80,
+    };
+  } catch (e) {
+    console.warn('[AirLabs] Error:', e.message);
+    return null;
+  }
+}
+
 // ── Helper: Geocode an airport name to get its coordinates ──
 async function geocodeAirport(airportName) {
   return withRetry(async () => {
@@ -206,7 +266,7 @@ function estimateTransitCost(distanceKm, country) {
 }
 
 // ── Route: Resolve IATA code from city name ──
-// Uses static iata-data.js + Google geocoding (no Amadeus dependency)
+// Uses AirLabs API + Google geocoding for dynamic airport resolution
 app.get('/api/resolve-iata', async (req, res) => {
   try {
     const keyword = (req.query.keyword || '').trim();
@@ -218,97 +278,30 @@ app.get('/api/resolve-iata', async (req, res) => {
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
 
-    // 1. Fast path: static airport lookup
-    const fallback = getFallbackIata(keyword);
-    if (fallback) {
-      const result = {
-        airportCode: fallback.airportCode,
-        cityCode: fallback.cityCode,
-        airportName: fallback.airportName,
-        cityName: keyword,
-        country: fallback.country,
-        hasAirport: true
-      };
-      // If we have lat/lng, fetch airport coordinates via Google Geocoding
-      if (lat && lng) {
-        const [airportCoords, cityCoords] = await Promise.all([
-          geocodeAirport(fallback.airportName || fallback.airportCode),
-          geocodeCity(keyword),
-        ]);
-        if (airportCoords) {
-          result.airportLat = airportCoords.lat;
-          result.airportLng = airportCoords.lng;
-        }
-        if (cityCoords) {
-          result.cityCenterLat = cityCoords.lat;
-          result.cityCenterLng = cityCoords.lng;
-        }
-      }
-      setCache(cacheKey, result, TTL.IATA);
-      return res.json(result);
-    }
-
-    // 2. Fast path: known no-airport city
-    const noAirport = getNoAirportCity(keyword);
-    if (noAirport) {
-      const result = {
-        airportCode: noAirport.nearestAirportCode,
-        cityCode: noAirport.nearestCityCode,
-        airportName: noAirport.nearestAirportName,
-        cityName: keyword,
-        country: noAirport.country,
-        hasAirport: false,
-        nearestCity: noAirport.nearestCityName,
-        transitFromAirport: {
-          distanceKm: noAirport.distanceKm,
-          duration: noAirport.transitDuration,
-          estimatedCostEur: noAirport.transitCostEur,
-        }
-      };
-      if (lat && lng) {
-        const [airportCoords, cityCoords] = await Promise.all([
-          geocodeAirport(noAirport.nearestAirportName || noAirport.nearestAirportCode),
-          geocodeCity(keyword),
-        ]);
-        if (airportCoords) {
-          result.airportLat = airportCoords.lat;
-          result.airportLng = airportCoords.lng;
-        }
-        if (cityCoords) {
-          result.cityCenterLat = cityCoords.lat;
-          result.cityCenterLng = cityCoords.lng;
-        }
-      }
-      setCache(cacheKey, result, TTL.IATA);
-      return res.json(result);
-    }
-
-    // 3. Coordinate-based nearest airport lookup
+    // AirLabs API: dynamic nearest airport lookup
     if (lat && lng) {
-      const nearest = getNearestAirportByCoords(lat, lng);
-      if (nearest) {
+      const airlabs = await findNearestAirportAirlabs(lat, lng);
+      if (airlabs) {
         const result = {
-          airportCode: nearest.airportCode,
-          cityCode: nearest.cityCode,
-          airportName: nearest.airportName,
+          airportCode: airlabs.airportCode,
+          cityCode: airlabs.cityCode,
+          airportName: airlabs.airportName,
           cityName: keyword,
-          country: nearest.country,
-          hasAirport: nearest.hasAirport,
-          airportLat: nearest.lat,
-          airportLng: nearest.lng,
+          country: airlabs.country,
+          hasAirport: airlabs.hasAirport,
+          airportLat: airlabs.lat,
+          airportLng: airlabs.lng,
         };
 
-        // If airport is far (>80km), mark as no-airport city with transit info
-        if (!nearest.hasAirport) {
-          result.nearestCity = nearest.airportName;
+        if (!airlabs.hasAirport) {
+          result.nearestCity = airlabs.airportName;
           result.transitFromAirport = {
-            distanceKm: nearest.distanceKm,
-            duration: `~${Math.round(nearest.distanceKm / 60)}h by road`,
-            estimatedCostEur: estimateTransitCost(nearest.distanceKm, nearest.country),
+            distanceKm: airlabs.distanceKm,
+            duration: `~${Math.round(airlabs.distanceKm / 60)}h by road`,
+            estimatedCostEur: estimateTransitCost(airlabs.distanceKm, airlabs.country),
           };
         }
 
-        // Get city center coords via Google
         const cityCoords = await geocodeCity(keyword);
         if (cityCoords) {
           result.cityCenterLat = cityCoords.lat;
@@ -323,7 +316,7 @@ app.get('/api/resolve-iata', async (req, res) => {
       }
     }
 
-    // 4. Nothing found
+    // Nothing found
     res.json({
       airportCode: null,
       cityCode: null,
