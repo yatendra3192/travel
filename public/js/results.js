@@ -1980,11 +1980,11 @@ const Results = {
       if (footer) {
         const ts = document.createElement('div');
         ts.className = 'travelers-summary';
-        ts.textContent = `${this.plan.adults} adult${this.plan.adults > 1 ? 's' : ''}${this.plan.children > 0 ? `, ${this.plan.children} child${this.plan.children > 1 ? 'ren' : ''}` : ''} · ${CostEngine.calculateRooms(this.plan.adults)} room${CostEngine.calculateRooms(this.plan.adults) > 1 ? 's' : ''}`;
+        ts.textContent = `${this.plan.adults} adult${this.plan.adults > 1 ? 's' : ''}${this.plan.children > 0 ? ` · ${this.plan.children} child${this.plan.children > 1 ? 'ren' : ''}` : ''}${this.plan.infants > 0 ? ` · ${this.plan.infants} infant${this.plan.infants > 1 ? 's' : ''}` : ''} · ${CostEngine.calculateRooms(this.plan.adults)} room${CostEngine.calculateRooms(this.plan.adults) > 1 ? 's' : ''}`;
         footer.insertBefore(ts, footer.firstChild);
       }
     } else {
-      travelersEl.textContent = `${this.plan.adults} adult${this.plan.adults > 1 ? 's' : ''}${this.plan.children > 0 ? `, ${this.plan.children} child${this.plan.children > 1 ? 'ren' : ''}` : ''} · ${CostEngine.calculateRooms(this.plan.adults)} room${CostEngine.calculateRooms(this.plan.adults) > 1 ? 's' : ''}`;
+      travelersEl.textContent = `${this.plan.adults} adult${this.plan.adults > 1 ? 's' : ''}${this.plan.children > 0 ? ` · ${this.plan.children} child${this.plan.children > 1 ? 'ren' : ''}` : ''}${this.plan.infants > 0 ? ` · ${this.plan.infants} infant${this.plan.infants > 1 ? 's' : ''}` : ''} · ${CostEngine.calculateRooms(this.plan.adults)} room${CostEngine.calculateRooms(this.plan.adults) > 1 ? 's' : ''}`;
     }
 
     // Mobile bottom sheet
