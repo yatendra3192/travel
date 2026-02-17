@@ -1150,6 +1150,114 @@
   margin: 0;
 }
 
+.airport-select {
+  cursor: pointer;
+  border-bottom: 1px dashed var(--color-text-secondary);
+  transition: color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.airport-select:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.airport-edit-icon {
+  font-size: 0.7rem;
+  opacity: 0.4;
+  margin-left: 2px;
+}
+
+.airport-select:hover .airport-edit-icon {
+  opacity: 1;
+  color: var(--color-primary);
+}
+
+/* Airport picker popup */
+.airport-picker-popup {
+  background: white;
+  border-radius: var(--radius-glass-md);
+  padding: 20px;
+  max-width: 420px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+}
+
+.airport-picker-popup h3 {
+  margin: 0 0 14px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.airport-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.airport-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-glass-sm);
+  cursor: pointer;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+
+.airport-picker-item:hover {
+  background: rgba(15,118,110,0.06);
+  border-color: var(--color-primary-light);
+}
+
+.airport-picker-item.selected {
+  border: 2px solid var(--color-primary);
+  background: rgba(15,118,110,0.06);
+  padding: 9px 11px;
+}
+
+.airport-picker-code {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  min-width: 40px;
+}
+
+.airport-picker-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.airport-picker-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.airport-picker-dist {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.popup-cancel-btn {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-glass-sm);
+  background: none;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.popup-cancel-btn:hover {
+  background: var(--glass-bg);
+}
+
 .flight-date {
   font-size: 0.78rem;
   color: var(--color-text-secondary);

@@ -1911,6 +1911,106 @@ const Results = {
     this.recalculateAndRenderCost();
   },
 
+  async showAirportPicker(legIndex, side) {
+    const leg = this.plan?.flightLegs?.[legIndex];
+    if (!leg) return;
+
+    // Determine which city's coords to use
+    let lat, lng, currentCode;
+    if (side === 'from') {
+      // Origin city of this leg
+      if (legIndex === 0) {
+        lat = this.plan.from.cityLat || this.plan.from.lat;
+        lng = this.plan.from.cityLng || this.plan.from.lng;
+      } else {
+        const prevCity = this.plan.cities[legIndex - 1];
+        lat = prevCity?.lat; lng = prevCity?.lng;
+      }
+      currentCode = leg.from;
+    } else {
+      const city = this.plan.cities[legIndex];
+      lat = city?.lat; lng = city?.lng;
+      currentCode = leg.to;
+    }
+
+    if (!lat || !lng) return;
+
+    // Fetch nearby airports
+    const airports = await Api.getNearbyAirports(lat, lng);
+    if (!airports || airports.length === 0) return;
+
+    // Show popup with airport options
+    const overlay = document.createElement('div');
+    overlay.className = 'popup-overlay';
+    overlay.innerHTML = `
+      <div class="airport-picker-popup">
+        <h3>Select Airport</h3>
+        <div class="airport-picker-list">
+          ${airports.map(a => `
+            <div class="airport-picker-item${a.code === currentCode ? ' selected' : ''}" data-code="${Utils.escapeHtml(a.code)}" data-name="${Utils.escapeHtml(a.name)}">
+              <div class="airport-picker-code">${Utils.escapeHtml(a.code)}</div>
+              <div class="airport-picker-info">
+                <div class="airport-picker-name">${Utils.escapeHtml(a.name)}</div>
+                <div class="airport-picker-dist">${a.distance} km away</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <button class="popup-cancel-btn" onclick="this.closest('.popup-overlay').remove()">Cancel</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    overlay.querySelectorAll('.airport-picker-item').forEach(item => {
+      item.addEventListener('click', async () => {
+        const newCode = item.dataset.code;
+        const newName = item.dataset.name;
+        overlay.remove();
+        if (newCode === currentCode) return;
+        await this.changeFlightAirport(legIndex, side, newCode, newName);
+      });
+    });
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  },
+
+  async changeFlightAirport(legIndex, side, newCode, newName) {
+    const leg = this.plan.flightLegs[legIndex];
+    if (!leg) return;
+
+    if (side === 'from') {
+      leg.from = newCode;
+      leg.fromName = newName;
+    } else {
+      leg.to = newCode;
+      leg.toName = newName;
+    }
+
+    // Re-fetch flights for this leg
+    const overlay = document.getElementById('loading-overlay');
+    overlay.style.display = 'flex';
+    Components.renderLoadingSteps(['Searching flights...']);
+    try {
+      const result = await Api.searchFlights(leg.from, leg.to, leg.date, this.plan.adults, this.plan.children);
+      const flights = result?.flights || [];
+      leg.offers = flights;
+      leg.selectedOffer = flights[0] || null;
+    } catch (e) {
+      console.warn('Flight re-fetch failed:', e);
+    }
+    overlay.style.display = 'none';
+
+    // Re-render flight card
+    const oldCard = document.querySelector(`.timeline-card[data-type="flight"][data-index="${legIndex}"]`);
+    if (oldCard) {
+      oldCard.replaceWith(Components.createFlightCard(leg, legIndex));
+    }
+
+    // Recompute schedule & costs
+    this._computeTimelineSchedule();
+    this.renderTimeline();
+    this.recalculateAndRenderCost();
+  },
+
   recalculateAndRenderCost() {
     clearTimeout(this._costRecalcTimer);
     this._costRecalcTimer = setTimeout(() => {

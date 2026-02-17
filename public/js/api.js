@@ -84,5 +84,12 @@ const Api = {
     const resp = await fetch(`/api/transfer-estimate?${params}`);
     if (!resp.ok) return null;
     return resp.json();
+  },
+
+  async getNearbyAirports(lat, lng) {
+    const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
+    const resp = await fetch(`/api/nearby-airports?${params}`);
+    const data = await resp.json().catch(() => ({ airports: [] }));
+    return data.airports || [];
   }
 };

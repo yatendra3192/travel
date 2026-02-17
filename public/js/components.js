@@ -553,7 +553,11 @@ const Components = {
       <div class="flight-card-header">
         <span class="card-icon">&#9992;&#65039;</span>
         <div class="card-title">
-          <h4>${leg.fromName || leg.from} &rarr; ${leg.toName || leg.to}</h4>
+          <h4>
+            <span class="airport-select" onclick="event.stopPropagation(); Results.showAirportPicker(${index}, 'from')" title="Change departure airport">${leg.fromName || leg.from} <span class="airport-edit-icon">&#9998;</span></span>
+            &rarr;
+            <span class="airport-select" onclick="event.stopPropagation(); Results.showAirportPicker(${index}, 'to')" title="Change arrival airport">${leg.toName || leg.to} <span class="airport-edit-icon">&#9998;</span></span>
+          </h4>
           ${flightSchedHtml}
         </div>
         ${modePillsHtml}

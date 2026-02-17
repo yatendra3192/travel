@@ -343,6 +343,42 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// ── Route: Nearby airports (AirLabs) ──
+app.get('/api/nearby-airports', async (req, res) => {
+  try {
+    const { lat, lng } = req.query;
+    if (!lat || !lng) return res.status(400).json({ error: 'lat and lng required' });
+
+    const cacheKey = `nearby-airports:${parseFloat(lat).toFixed(2)}:${parseFloat(lng).toFixed(2)}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
+
+    const url = `https://airlabs.co/api/v9/nearby?lat=${lat}&lng=${lng}&distance=300&api_key=${AIRLABS_API_KEY}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) return res.json({ airports: [] });
+    const data = await resp.json();
+    if (!data.response?.airports) return res.json({ airports: [] });
+
+    const airports = data.response.airports
+      .filter(a => a.iata_code && (a.popularity || 0) >= 5000)
+      .slice(0, 10)
+      .map(a => ({
+        code: a.iata_code,
+        name: a.name,
+        city: a.city_code,
+        distance: Math.round(a.distance || haversineKm(parseFloat(lat), parseFloat(lng), a.lat, a.lng)),
+        popularity: a.popularity || 0,
+      }));
+
+    const result = { airports };
+    setCache(cacheKey, result);
+    res.json(result);
+  } catch (e) {
+    console.warn('[nearby-airports]', e.message);
+    res.json({ airports: [] });
+  }
+});
+
 // ── Route: Flight search (via Python scraping service → Skyscanner) ──
 app.get('/api/flights', async (req, res) => {
   try {
