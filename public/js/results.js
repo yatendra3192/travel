@@ -1117,7 +1117,7 @@ const Results = {
         'home-to-airport',
         plan.from.cityLat, plan.from.cityLng,
         plan.from.airportLat, plan.from.airportLng,
-        originCountry, null, originAirportName
+        originCountry, null, null
       ));
     } else {
       // Placeholder — will be replaced by direct drive below
@@ -1191,13 +1191,13 @@ const Results = {
           liveTransfer(stationOrAirportName, hotelLabel, `${transferType}-to-hotel`,
             stationOrAirportLat, stationOrAirportLng,
             city.hotelLat, city.hotelLng,
-            city.country, stationOrAirportName, null)
+            city.country, null, null)
         );
         cityTransferPromises.push(
           liveTransfer(hotelLabel, stationOrAirportName, `hotel-to-${transferType}`,
             city.hotelLat, city.hotelLng,
             stationOrAirportLat, stationOrAirportLng,
-            city.country, null, stationOrAirportName)
+            city.country, null, null)
         );
       }
     }
@@ -1211,7 +1211,7 @@ const Results = {
         'airport-to-home',
         plan.from.airportLat, plan.from.airportLng,
         plan.from.cityLat, plan.from.cityLng,
-        originCountry, originAirportName, null
+        originCountry, null, null
       ));
     } else {
       // Direct drive home from last city's hotel
@@ -1568,7 +1568,7 @@ const Results = {
         const stLat = city.airportLat || city.lat;
         const stLng = city.airportLng || city.lng;
         try {
-          const est = await Api.getTransferEstimate(destLat, destLng, stLat, stLng, city.country, null, stationName);
+          const est = await Api.getTransferEstimate(destLat, destLng, stLat, stLng, city.country, null, null);
           if (est) {
             const bestTransit = est.transitRoutes?.[0] || {};
             Object.assign(depTransfer, {
