@@ -183,6 +183,7 @@ const Landing = {
         d => d.name.toLowerCase() === placeData.name.toLowerCase()
       );
       if (!alreadyAdded) {
+        placeData.nights = 1;
         this.destinations.push(placeData);
         this.renderChips();
       }
@@ -195,10 +196,37 @@ const Landing = {
   renderChips() {
     this.chipsContainer.innerHTML = '';
     this.destinations.forEach((dest, i) => {
-      const chip = Components.createChip(dest.name, () => {
+      const chip = document.createElement('div');
+      chip.className = 'dest-chip';
+      const nights = dest.nights || 1;
+      chip.innerHTML = `
+        <div class="dest-chip-top">
+          <span class="dest-chip-name">${Utils.escapeHtml(dest.name)}</span>
+          <button type="button" class="chip-remove" title="Remove" aria-label="Remove ${Utils.escapeHtml(dest.name)}">&times;</button>
+        </div>
+        <div class="dest-chip-nights">
+          <button type="button" class="dest-nights-btn minus" aria-label="Decrease nights">-</button>
+          <span class="dest-nights-val">${nights}</span>
+          <button type="button" class="dest-nights-btn plus" aria-label="Increase nights">+</button>
+          <span class="dest-nights-label">${nights === 0 ? 'pass-through' : nights === 1 ? 'night' : 'nights'}</span>
+        </div>
+      `;
+      chip.querySelector('.chip-remove').addEventListener('click', () => {
         this.destinations.splice(i, 1);
         this.renderChips();
         this.validateForm();
+      });
+      const valEl = chip.querySelector('.dest-nights-val');
+      const labelEl = chip.querySelector('.dest-nights-label');
+      chip.querySelector('.dest-nights-btn.minus').addEventListener('click', () => {
+        dest.nights = Math.max(0, (dest.nights || 1) - 1);
+        valEl.textContent = dest.nights;
+        labelEl.textContent = dest.nights === 0 ? 'pass-through' : dest.nights === 1 ? 'night' : 'nights';
+      });
+      chip.querySelector('.dest-nights-btn.plus').addEventListener('click', () => {
+        dest.nights = Math.min(30, (dest.nights || 1) + 1);
+        valEl.textContent = dest.nights;
+        labelEl.textContent = dest.nights === 1 ? 'night' : 'nights';
       });
       this.chipsContainer.appendChild(chip);
     });

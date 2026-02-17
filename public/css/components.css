@@ -159,6 +159,78 @@
   background: var(--color-primary-dark);
 }
 
+/* ── Destination chips with nights ── */
+.dest-chip {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 12px;
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur-light);
+  backdrop-filter: var(--glass-blur-light);
+  border: 1px solid rgba(20,184,166,0.25);
+  border-radius: var(--radius-glass-sm);
+  animation: chipAppear var(--duration-normal) var(--ease-spring);
+  min-width: 120px;
+}
+
+.dest-chip-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dest-chip-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dest-chip-nights {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.dest-nights-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--color-text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+
+.dest-nights-btn:hover {
+  border-color: var(--color-primary);
+  background: rgba(15,118,110,0.08);
+}
+
+.dest-nights-val {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-text);
+  min-width: 16px;
+  text-align: center;
+}
+
+.dest-nights-label {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+}
+
 /* ── Autocomplete dropdown ── */
 .input-wrapper {
   position: relative;
