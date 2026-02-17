@@ -429,7 +429,7 @@ const Results = {
             if (hotels.length === 0) return Promise.resolve({ offers: [] });
             const sampleIds = hotels.slice(0, 20).map(h => h.hotelId);
             const checkIn = this.getCityCheckIn(tripData, iataResults, i);
-            const cityNights = tripData.destinations[i].nights || 1;
+            const cityNights = tripData.destinations[i].nights ?? 1;
             const checkOut = Utils.addDays(checkIn, Math.max(1, cityNights));
             return Api.getHotelOffers(sampleIds, checkIn, checkOut, tripData.adults)
               .catch(() => ({ offers: [] }));
@@ -714,7 +714,7 @@ const Results = {
         airportName: iata.airportName,
         country: iata.country,
         hasAirport: iata.hasAirport !== false,
-        nights: dest.nights || 1,
+        nights: dest.nights ?? 1,
         hotelType: 'comfort',
         hotelBasePrice,
         hotelPriceSource,

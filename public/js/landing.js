@@ -198,7 +198,7 @@ const Landing = {
     this.destinations.forEach((dest, i) => {
       const chip = document.createElement('div');
       chip.className = 'dest-chip';
-      const nights = dest.nights || 1;
+      const nights = dest.nights ?? 1;
       chip.innerHTML = `
         <div class="dest-chip-top">
           <span class="dest-chip-name">${Utils.escapeHtml(dest.name)}</span>
@@ -219,12 +219,12 @@ const Landing = {
       const valEl = chip.querySelector('.dest-nights-val');
       const labelEl = chip.querySelector('.dest-nights-label');
       chip.querySelector('.dest-nights-btn.minus').addEventListener('click', () => {
-        dest.nights = Math.max(0, (dest.nights || 1) - 1);
+        dest.nights = Math.max(0, (dest.nights ?? 1) - 1);
         valEl.textContent = dest.nights;
         labelEl.textContent = dest.nights === 0 ? 'pass-through' : dest.nights === 1 ? 'night' : 'nights';
       });
       chip.querySelector('.dest-nights-btn.plus').addEventListener('click', () => {
-        dest.nights = Math.min(30, (dest.nights || 1) + 1);
+        dest.nights = Math.min(30, (dest.nights ?? 1) + 1);
         valEl.textContent = dest.nights;
         labelEl.textContent = dest.nights === 1 ? 'night' : 'nights';
       });
