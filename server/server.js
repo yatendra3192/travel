@@ -323,8 +323,17 @@ app.get('/api/resolve-iata', async (req, res) => {
 
         const cityCoords = await geocodeCity(keyword);
         if (cityCoords) {
-          result.cityCenterLat = cityCoords.lat;
-          result.cityCenterLng = cityCoords.lng;
+          // Validate: geocoded city center must be within 100km of input coords
+          // (prevents geocoding "Tokyo" to a village in Sri Lanka instead of Tokyo, Japan)
+          const gcDist = haversineKm(lat, lng, cityCoords.lat, cityCoords.lng);
+          if (gcDist < 100) {
+            result.cityCenterLat = cityCoords.lat;
+            result.cityCenterLng = cityCoords.lng;
+          } else {
+            console.warn(`[resolve-iata] geocodeCity("${keyword}") returned coords ${gcDist.toFixed(0)}km from input — using input coords instead`);
+            result.cityCenterLat = lat;
+            result.cityCenterLng = lng;
+          }
         } else {
           result.cityCenterLat = lat;
           result.cityCenterLng = lng;
@@ -621,11 +630,11 @@ app.get('/api/flights', async (req, res) => {
       }
     }
 
-    // Try SerpApi first — one call searches all airport combinations
+    // Try SerpApi — one call searches all airport combinations
     if (SERPAPI_KEY) {
+      const depId = allOrigins.join(',');
+      const arrId = allDests.join(',');
       try {
-        const depId = allOrigins.join(',');
-        const arrId = allDests.join(',');
         console.log(`[flights] [${req.id}] SerpApi: ${depId}->${arrId} on ${date} (${userCurrency})`);
         const data = await searchFlightsSerpApi(depId, arrId, date, numAdults, numChildren, userCurrency);
         if (data.flights.length > 0) {
@@ -635,6 +644,22 @@ app.get('/api/flights', async (req, res) => {
         console.log(`[flights] [${req.id}] SerpApi returned 0 flights`);
       } catch (serpErr) {
         console.warn(`[flights] [${req.id}] SerpApi failed: ${serpErr.message}`);
+      }
+
+      // Retry with primary airports only if multi-airport search failed
+      const primaryOnly = origin.toUpperCase();
+      const primaryDest = destination.toUpperCase();
+      if (depId !== primaryOnly || arrId !== primaryDest) {
+        try {
+          console.log(`[flights] [${req.id}] SerpApi retry (primary only): ${primaryOnly}->${primaryDest} on ${date}`);
+          const data = await searchFlightsSerpApi(primaryOnly, primaryDest, date, numAdults, numChildren, userCurrency);
+          if (data.flights.length > 0) {
+            console.log(`[flights] [${req.id}] SerpApi retry returned ${data.flights.length} flights`);
+            return res.json(data);
+          }
+        } catch (retryErr) {
+          console.warn(`[flights] [${req.id}] SerpApi retry failed: ${retryErr.message}`);
+        }
       }
     }
 
