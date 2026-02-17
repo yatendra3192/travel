@@ -1057,33 +1057,43 @@ const Results = {
     // Helper: fetch live transfer data or fallback
     async function liveTransfer(fromLabel, toLabel, type, oLat, oLng, dLat, dLng, country, originText, destText) {
       if (oLat && oLng && dLat && dLng) {
+        // Sanity check: straight-line distance between coords
+        const straightKm = haversineKmClient(oLat, oLng, dLat, dLng);
+        // Max reasonable driving distance: 3x straight-line or 300km, whichever is larger
+        const maxReasonableKm = Math.max(straightKm * 3, 300);
         try {
           const est = await Api.getTransferEstimate(oLat, oLng, dLat, dLng, country, originText, destText);
           if (est) {
-            const bestTransit = est.transitRoutes?.[0] || {};
-            return {
-              from: fromLabel,
-              to: toLabel,
-              type,
-              originLat: oLat, originLng: oLng,
-              destLat: dLat, destLng: dLng,
-              distanceKm: est.driving.distanceKm,
-              durationText: est.driving.duration,
-              drivingSummary: est.driving.summary,
-              taxiCost: est.driving.taxiCost,
-              publicTransportCost: bestTransit.publicTransportCost || 1,
-              transitDuration: bestTransit.duration || est.driving.duration,
-              fareSource: bestTransit.fareSource || 'estimated',
-              transitRoutes: est.transitRoutes || [],
-              walking: est.walking || null,
-              bicycling: est.bicycling || null,
-            };
+            const drivingKm = est.driving?.distanceKm || 0;
+            // If Google returned absurd distance (e.g. routing through another continent), fall back
+            if (drivingKm > maxReasonableKm && drivingKm > 500) {
+              console.warn(`Transfer ${fromLabel} → ${toLabel}: Google returned ${drivingKm}km but straight-line is ${Math.round(straightKm)}km. Using straight-line fallback.`);
+            } else {
+              const bestTransit = est.transitRoutes?.[0] || {};
+              return {
+                from: fromLabel,
+                to: toLabel,
+                type,
+                originLat: oLat, originLng: oLng,
+                destLat: dLat, destLng: dLng,
+                distanceKm: est.driving.distanceKm,
+                durationText: est.driving.duration,
+                drivingSummary: est.driving.summary,
+                taxiCost: est.driving.taxiCost,
+                publicTransportCost: bestTransit.publicTransportCost || 1,
+                transitDuration: bestTransit.duration || est.driving.duration,
+                fareSource: bestTransit.fareSource || 'estimated',
+                transitRoutes: est.transitRoutes || [],
+                walking: est.walking || null,
+                bicycling: est.bicycling || null,
+              };
+            }
           }
         } catch (e) {
           console.warn('Transfer estimate failed:', e);
         }
       }
-      // Fallback: rough estimate
+      // Fallback: rough estimate from straight-line distance
       const distKm = (oLat && oLng && dLat && dLng)
         ? Math.round(haversineKmClient(oLat, oLng, dLat, dLng))
         : 30;

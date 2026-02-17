@@ -651,7 +651,12 @@ app.get('/api/transfer-estimate', async (req, res) => {
     }
 
     // ── Driving ──
-    const drivingInfo = parseBasicRoute(drivingData, 'driving');
+    let drivingInfo = parseBasicRoute(drivingData, 'driving');
+    // Sanity check: if Google returns absurd distance vs straight-line, discard
+    if (drivingInfo && drivingInfo.distanceKm > Math.max(straightDist * 4, 500)) {
+      console.warn(`[transfer] Google driving ${drivingInfo.distanceKm}km vs straight-line ${Math.round(straightDist)}km — discarding bad route`);
+      drivingInfo = null;
+    }
     const driving = drivingInfo ? {
       ...drivingInfo,
       taxiCost: Math.round(taxiRates.baseFare + drivingInfo.distanceKm * taxiRates.perKm),
@@ -671,12 +676,18 @@ app.get('/api/transfer-estimate', async (req, res) => {
     const bicycling = parseBasicRoute(bicyclingData, 'bicycling');
 
     // ── Transit routes (multiple alternatives) ──
+    const maxTransitKm = Math.max(straightDist * 4, 500);
     const transitRoutes = [];
     if (transitData?.routes) {
       for (const route of transitData.routes.slice(0, 3)) {
         const leg = route.legs?.[0];
         if (!leg) continue;
         const distKm = Math.round(leg.distance.value / 1000);
+        // Skip absurd transit routes
+        if (distKm > maxTransitKm) {
+          console.warn(`[transfer] Skipping transit route: ${distKm}km vs straight-line ${Math.round(straightDist)}km`);
+          continue;
+        }
 
         // Fare
         let publicTransportCost, fareSource = 'estimated';
