@@ -10,48 +10,34 @@ Trip Cost Calculator — a full-stack web app that calculates door-to-door trave
 
 ## Running the Project
 
-Both servers must be running for full functionality:
-
 ```bash
-# Terminal 1: Node server (port 3000) — serves frontend + proxies APIs
 cd server && npm install && npm run dev
-
-# Terminal 2: Python scraping API (port 5000) — headless browser scraping
-cd python-api && pip install -r requirements.txt && python main.py
 ```
 
 Open `http://localhost:3000`. No build step — frontend is vanilla JS served as static files.
 
-The Python service requires Playwright browsers: `playwright install chromium`
-
 ## Deployment (Railway)
 
-Two services from the same GitHub repo, auto-deploy on push to `main`:
+Single service from the GitHub repo, auto-deploy on push to `main`:
 
 | Service | Root Directory | Dockerfile | Public |
 |---------|---------------|------------|--------|
 | **travel** (Node) | `/` (repo root) | `Dockerfile.node` | Yes — serves frontend |
-| **satisfied-liberation** (Python) | `/python-api` | `Dockerfile` | No — internal only |
 
-**Environment variables:**
-- Node service: `GOOGLE_API_KEY`, `AIRLABS_API_KEY`, `PYTHON_API_URL` (points to Python service's private Railway URL)
-- Python service: `PORT`
+**Environment variables:** `GOOGLE_API_KEY`, `AIRLABS_API_KEY`, `SERPAPI_KEY`
 
-Railway configs: `railway.json` (Node) and `python-api/railway.json` (Python) — healthchecks, restart policies.
+Railway config: `railway.json` — healthchecks, restart policies.
 
 ## Architecture
 
-Three-tier system with no build tools or bundler:
+Two-tier system with no build tools or bundler:
 
 ```
 Browser (vanilla JS SPA)
   → Node/Express server (port 3000)
       → Google Maps/Places/Directions APIs (for routing, geocoding, autocomplete)
       → AirLabs API (for dynamic IATA airport code resolution)
-      → Python FastAPI service (port 5000)
-          → Playwright browser pool
-          → Google Flights (scrapes flight prices)
-          → Booking.com (scrapes hotel prices)
+      → SerpApi (Google Flights search, Google Hotels search)
 ```
 
 ### Frontend (`public/`)
@@ -98,31 +84,16 @@ Express server at `server/server.js`. Key routes:
 | Route | Purpose | Data Source |
 |-------|---------|-------------|
 | `/api/resolve-iata?keyword=&lat=&lng=` | Airport code lookup | AirLabs nearby API + Google Geocoding |
-| `/api/flights?origin=&destination=&date=` | Flight search | Python API → Google Flights |
-| `/api/hotels/list-by-geocode?latitude=&longitude=` | Hotel search | Python API → Booking.com |
-| `/api/hotels/offers?hotelIds=&checkIn=&checkOut=` | Hotel pricing | Python API → Booking.com |
+| `/api/flights?origin=&destination=&date=` | Flight search | SerpApi Google Flights |
+| `/api/hotels/search-by-name?query=&checkIn=&checkOut=` | Hotel search + pricing | SerpApi Google Hotels |
 | `/api/meal-costs?cityCode=&countryCode=` | Meal prices | Static `meal-data.js` |
 | `/api/transfer-estimate?originLat=&originLng=&destLat=&destLng=` | Transfer routing + costs | Google Directions API |
 
-`pythonApiGet(endpoint, params)` proxies to Python API (configured via `PYTHON_API_URL` env var, defaults to `http://localhost:5000`). `cache.js` provides a simple in-memory Map-based TTL cache (7 days for IATA/transfers).
+`cache.js` provides a simple in-memory Map-based TTL cache (7 days for IATA/transfers, 30min for flights/hotels).
 
 **Airport resolution via AirLabs:** The `/api/resolve-iata` endpoint uses the AirLabs nearby API (`airlabs.co/api/v9/nearby`) to dynamically find the nearest major commercial airport for any city worldwide. Uses the `popularity` field (passenger traffic proxy) to filter out heliports, air bases, and tiny airstrips — picks the busiest hub within 100km, or the nearest major airport within 200km. Falls back to smaller regional airports (popularity >= 1000) if no major hub is found. Results are cached for 7 days. Free tier: 1,000 requests/month.
 
 **Dead code:** `amadeus-auth.js` is a legacy module from when the project used the Amadeus API — no longer imported or used. Contains hardcoded credentials that should be removed.
-
-### Python Scraping API (`python-api/`)
-
-FastAPI + Playwright headless browser pool (2 contexts, recycled every 50 uses). Anti-detection via random user agents/viewports. Health endpoint at `/health`.
-
-Scraper files in `scrapers/`:
-- **flights.py** — Navigates Google Flights URL, parses flight cards from DOM (price, times, duration, airline, stops, layovers). Handles overnight flight date correction using departure + duration.
-- **hotels_list.py** — Searches Booking.com by geocode, extracts hotel cards
-- **hotels_offers.py** — Fetches specific hotel pricing by ID + dates
-- **base.py** — Rate limiting (3s Google, 2s Booking) and retry with exponential backoff
-
-Caching via `cachetools.TTLCache`: flights 30min, hotel lists 24h, hotel offers 30min.
-
-Config in `config.py` — all timeouts, rate limits, cache sizes, browser pool settings. `PORT` configurable via env var.
 
 ## Key Patterns
 
@@ -134,7 +105,7 @@ Config in `config.py` — all timeouts, rate limits, cache sizes, browser pool s
 
 **Schedule computation:** `_computeTimelineSchedule()` walks events sequentially — transfer durations advance a cursor, flight departure/arrival times act as anchors, hotel check-in is always 3:00 PM (with early/late badge if traveler arrives before/after), check-out is 11:00 AM adjusted earlier if next flight requires it.
 
-**Overnight flights:** Both Python scraper and client-side enrichment use `departure + duration` to calculate correct arrival date (not just comparing arrival vs departure times).
+**Overnight flights:** Client-side enrichment uses `departure + duration` to calculate correct arrival date (not just comparing arrival vs departure times).
 
 ## Static Data Files
 

@@ -13,49 +13,21 @@ const Api = {
     return resp.json();
   },
 
-  async searchFlights(origin, destination, date, adults, children, fromCity, toCity) {
+  async searchFlights(origin, destination, date, adults, children, fromCity, toCity, altOrigins, altDestinations) {
     const params = new URLSearchParams({
       origin, destination, date,
       adults: String(adults || 1),
-      children: String(children || 0)
+      children: String(children || 0),
+      currency: Utils.displayCurrency || 'EUR',
     });
     if (fromCity) params.set('fromCity', fromCity);
     if (toCity) params.set('toCity', toCity);
+    // Pass alternate airports so server can search all in one SerpApi call
+    if (altOrigins && altOrigins.length) params.set('altOrigins', altOrigins.join(','));
+    if (altDestinations && altDestinations.length) params.set('altDestinations', altDestinations.join(','));
     const resp = await fetch(`/api/flights?${params}`);
     const data = await resp.json().catch(() => ({ flights: [], carriers: {} }));
     if (data.error) console.warn('Flights API:', data.error);
-    return data;
-  },
-
-  async listHotels(cityCode) {
-    const params = new URLSearchParams({ cityCode });
-    const resp = await fetch(`/api/hotels/list?${params}`);
-    const data = await resp.json().catch(() => ({ hotels: [] }));
-    if (data.error) console.warn('Hotels list API:', data.error);
-    return data;
-  },
-
-  async getHotelOffers(hotelIds, checkIn, checkOut, adults) {
-    const params = new URLSearchParams({
-      hotelIds: hotelIds.join(','),
-      checkIn, checkOut,
-      adults: String(adults || 1)
-    });
-    const resp = await fetch(`/api/hotels/offers?${params}`);
-    const data = await resp.json().catch(() => ({ offers: [] }));
-    if (data.error) console.warn('Hotel offers API:', data.error);
-    return data;
-  },
-
-  async listHotelsByGeocode(latitude, longitude, radius) {
-    const params = new URLSearchParams({
-      latitude: String(latitude),
-      longitude: String(longitude),
-      radius: String(radius || 5),
-    });
-    const resp = await fetch(`/api/hotels/list-by-geocode?${params}`);
-    const data = await resp.json().catch(() => ({ hotels: [] }));
-    if (data.error) console.warn('Hotels geocode API:', data.error);
     return data;
   },
 
@@ -100,5 +72,17 @@ const Api = {
     const resp = await fetch(`/api/search-airports?${params}`);
     const data = await resp.json().catch(() => ({ airports: [] }));
     return data.airports || [];
-  }
+  },
+
+  async searchHotelsByName(query, checkIn, checkOut, adults) {
+    const params = new URLSearchParams({
+      query,
+      checkIn, checkOut,
+      adults: String(adults || 1),
+      currency: Utils.displayCurrency || 'EUR',
+    });
+    const resp = await fetch(`/api/hotels/search-by-name?${params}`);
+    const data = await resp.json().catch(() => ({ hotels: [] }));
+    return data;
+  },
 };

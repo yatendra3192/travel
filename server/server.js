@@ -12,8 +12,8 @@ if (!GOOGLE_API_KEY) {
   console.error('FATAL: GOOGLE_API_KEY environment variable is not set.');
   process.exit(1);
 }
-const PYTHON_API_BASE = process.env.PYTHON_API_URL || 'http://localhost:5000';
 const AIRLABS_API_KEY = process.env.AIRLABS_API_KEY || 'afa16b56-229a-4936-955e-53ab521c4bf0';
+const SERPAPI_KEY = process.env.SERPAPI_KEY || '24d773c04c85f380c9d0cb7a9671169cabaf02d870dde46cdcb9d943d422d9a9';
 
 const app = express();
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
@@ -72,39 +72,6 @@ const TTL = {
   TRANSFER: 24 * 60 * 60 * 1000,
 };
 
-// ── Helper: call Python scraping API ──
-async function pythonApiGet(endpoint, params = {}) {
-  const url = new URL(endpoint, PYTHON_API_BASE);
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
-  });
-
-  const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(30000) });
-  if (!resp.ok) {
-    const body = await resp.text();
-    console.error(`Python API error ${resp.status} on ${endpoint}: ${body}`);
-    throw new Error(`Python API error: ${resp.status}`);
-  }
-  return resp.json();
-}
-
-// ── Startup health check for Python service ──
-async function checkPythonService() {
-  try {
-    const resp = await fetch(`${PYTHON_API_BASE}/health`, { signal: AbortSignal.timeout(5000) });
-    if (resp.ok) {
-      const data = await resp.json();
-      console.log(`Python scraping service: status=${data.status}, browser_ready=${data.browser_ready}`);
-      return true;
-    }
-  } catch (e) {
-    // ignore
-  }
-  console.warn('WARNING: Python scraping service not reachable at ' + PYTHON_API_BASE);
-  console.warn('Start it with: cd python-api && python main.py');
-  return false;
-}
-
 // ── Retry with exponential backoff for Google API calls ──
 async function withRetry(fn, { retries = 2, baseDelay = 1000, description = 'API call' } = {}) {
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -142,12 +109,50 @@ async function findNearestAirportAirlabs(lat, lng) {
     // Filter to airports with IATA codes and real commercial traffic (popularity >= 10000)
     const candidates = data.response.airports.filter(a => a.iata_code && (a.popularity || 0) >= 10000);
 
+    // Score airports for international trip suitability.
+    // Problem: domestic-heavy airports (Osaka ITM, Seoul GMP, São Paulo CGH) can have
+    // higher popularity than the international gateway (KIX, ICN, GRU) because of
+    // massive domestic traffic. For international trip planning, we need to prefer
+    // the airport with better international connectivity.
+    //
+    // Scoring heuristic (no external data needed):
+    //   1. Popularity is the base score (higher = more flights = better connectivity)
+    //   2. Bonus for "International" in name (strong signal for international gateway)
+    //   3. Penalty for being very close to city center (<15km) when alternatives exist
+    //      (international airports are typically further out — KIX 38km vs ITM 12km,
+    //       ICN 48km vs GMP 16km, PVG 33km vs SHA 14km, TPE 34km vs TSA 4km)
+    //   4. Penalty for known domestic-only airports (hardcoded safety net)
+    const DOMESTIC_ONLY = new Set(['ITM', 'CGH', 'SDU', 'TSA', 'MDW', 'DAL']);
+
+    function airportScore(a, hasMultipleNearby) {
+      let score = a.popularity || 0;
+      const name = (a.name || '').toLowerCase();
+      // Bonus for "international" in name (but only real international, not domestic
+      // airports with misleading names — ITM is "Osaka International Airport")
+      if (name.includes('international') && !DOMESTIC_ONLY.has(a.iata_code)) {
+        score *= 1.3;
+      }
+      // When multiple airports serve the same metro, airports very close to city center
+      // (<15km) are more likely domestic-focused. International airports are typically
+      // built further out (30-60km) due to land/noise requirements.
+      if (hasMultipleNearby && (a.distance || 999) < 15) {
+        score *= 0.7;
+      }
+      // Hard penalty for known domestic-only airports
+      if (DOMESTIC_ONLY.has(a.iata_code)) {
+        score *= 0.3;
+      }
+      return score;
+    }
+
     let airport = null;
     if (candidates.length > 0) {
-      // Among nearby airports (<100km), pick the most popular (= busiest hub)
       const nearby = candidates.filter(a => (a.distance || 999) < 100);
       if (nearby.length > 0) {
-        airport = nearby.reduce((best, a) => (a.popularity || 0) > (best.popularity || 0) ? a : best);
+        const hasMultiple = nearby.length > 1;
+        airport = nearby.reduce((best, a) =>
+          airportScore(a, hasMultiple) > airportScore(best, hasMultiple) ? a : best
+        );
       } else {
         // All major airports are far — pick the closest one
         airport = candidates[0];
@@ -429,15 +434,165 @@ app.get('/api/search-airports', async (req, res) => {
   }
 });
 
-// ── Route: Flight search (via Python scraping service → Google Flights) ──
+// ── SerpApi Google Flights search ──
+
+// Convert SerpApi time "2025-03-15 06:30" to ISO "2025-03-15T06:30:00"
+function toIsoTime(t) {
+  if (!t) return '';
+  // Already ISO with T
+  if (t.includes('T')) return t;
+  // "2025-03-15 06:30" → "2025-03-15T06:30:00"
+  return t.replace(' ', 'T') + (t.length <= 16 ? ':00' : '');
+}
+
+// Rates matching frontend's Utils.EXCHANGE_RATES (1 EUR = X units)
+// Used to convert SerpApi prices from user's currency to EUR
+const FRONTEND_EUR_RATES = {
+  EUR: 1, INR: 91, USD: 1.09, GBP: 0.86, JPY: 163, AED: 4.0,
+  CHF: 0.96, CAD: 1.48, AUD: 1.65, SGD: 1.46, THB: 37.5,
+  MYR: 4.75, CNY: 7.85, KRW: 1420, SAR: 4.09, BRL: 5.3,
+  SEK: 11.2, NOK: 11.5, DKK: 7.46, PLN: 4.35, CZK: 25.2,
+  HUF: 395, TRY: 35, ZAR: 19.5, NZD: 1.78, HKD: 8.5,
+  TWD: 34.5, PHP: 61, IDR: 17200, VND: 27000, EGP: 53,
+  QAR: 3.97, BHD: 0.41, KWD: 0.33, OMR: 0.42,
+};
+
+function convertToEurFrontend(amount, fromCurrency) {
+  if (fromCurrency === 'EUR') return amount;
+  const rate = FRONTEND_EUR_RATES[fromCurrency];
+  if (!rate) return amount; // unknown currency, assume EUR
+  return amount / rate;
+}
+
+async function searchFlightsSerpApi(origin, destination, date, adults = 1, children = 0, currency = 'EUR') {
+  // Check cache first (30 min TTL) — includes currency since prices differ by market
+  const cacheKey = `serpapi:${origin}-${destination}-${date}-${adults}-${children}-${currency}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
+  const url = new URL('https://serpapi.com/search');
+  url.searchParams.set('engine', 'google_flights');
+  url.searchParams.set('departure_id', origin);   // can be comma-separated: "DEL,BOM"
+  url.searchParams.set('arrival_id', destination); // can be comma-separated: "KIX,ITM"
+  url.searchParams.set('outbound_date', date);
+  url.searchParams.set('type', '2'); // one-way
+  url.searchParams.set('currency', currency); // user's local currency for accurate pricing
+  url.searchParams.set('adults', String(adults));
+  if (children > 0) url.searchParams.set('children', String(children));
+  url.searchParams.set('api_key', SERPAPI_KEY);
+
+  const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(30000) });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`SerpApi HTTP ${resp.status}: ${body.slice(0, 200)}`);
+  }
+  const data = await resp.json();
+
+  if (data.error) {
+    throw new Error(`SerpApi error: ${data.error}`);
+  }
+
+  const allFlights = [...(data.best_flights || []), ...(data.other_flights || [])];
+  const carriers = {};
+  const flights = [];
+
+  for (const entry of allFlights) {
+    if (!entry.flights || entry.flights.length === 0) continue;
+    const price = entry.price;
+    if (!price) continue;
+
+    const firstSeg = entry.flights[0];
+    const lastSeg = entry.flights[entry.flights.length - 1];
+
+    // Primary airline — SerpApi gives full name in "airline", code is in flight_number prefix
+    const airlineName = firstSeg.airline || 'Unknown';
+    const flightNumMatch = (firstSeg.flight_number || '').match(/^([A-Z0-9]{2})\s/);
+    const airlineCode = flightNumMatch ? flightNumMatch[1] : (airlineName.slice(0, 2).toUpperCase());
+    if (airlineCode) carriers[airlineCode] = airlineName;
+
+    // Departure/arrival from first/last segment (convert "2025-03-15 06:30" → ISO)
+    const depTime = toIsoTime(firstSeg.departure_airport?.time);
+    const arrTime = toIsoTime(lastSeg.arrival_airport?.time);
+    const depAirport = firstSeg.departure_airport?.id || origin;
+    const arrAirport = lastSeg.arrival_airport?.id || destination;
+
+    // Total duration in PT format
+    const totalMin = entry.total_duration || 0;
+    const hours = Math.floor(totalMin / 60);
+    const mins = totalMin % 60;
+    const durationStr = `PT${hours}H${mins}M`;
+
+    // Stops count
+    const stops = entry.flights.length - 1;
+
+    // Build layovers from the layovers array
+    const layovers = (entry.layovers || []).map(l => ({
+      airportCode: l.id || 'XXX',
+      durationMinutes: l.duration || 0,
+      durationText: l.duration ? `${Math.floor(l.duration / 60)}h ${l.duration % 60}m` : '',
+    }));
+
+    // Build segments
+    const segments = entry.flights.map((seg, si) => {
+      const segDurMin = seg.duration || 0;
+      const segH = Math.floor(segDurMin / 60);
+      const segM = segDurMin % 60;
+      return {
+        from: seg.departure_airport?.id || '',
+        to: seg.arrival_airport?.id || '',
+        departure: toIsoTime(seg.departure_airport?.time),
+        arrival: toIsoTime(seg.arrival_airport?.time),
+        airline: ((seg.flight_number || '').match(/^([A-Z0-9]{2})\s/) || [])[1] || airlineCode,
+        flightNumber: (seg.flight_number || `${airlineCode}${1000 + si}`).replace(/\s+/g, ''),
+        duration: `PT${segH}H${segM}M`,
+      };
+    });
+
+    // Generate a stable ID
+    const idStr = `serp-${depAirport}${arrAirport}${date}${depTime}${arrTime}${stops}`;
+    const id = crypto.createHash('md5').update(idStr).digest('hex').slice(0, 12);
+
+    flights.push({
+      id,
+      price: round2(convertToEurFrontend(price, currency)),
+      currency: 'EUR',
+      airline: airlineCode,
+      airlineName: airlineName,
+      airlineLogo: entry.airline_logo || firstSeg.airline_logo || null,
+      departure: depTime,
+      arrival: arrTime,
+      departureTerminal: '',
+      arrivalTerminal: '',
+      duration: durationStr,
+      stops,
+      layovers,
+      segments,
+    });
+  }
+
+  // Sort by price
+  flights.sort((a, b) => a.price - b.price);
+
+  const result = { flights, carriers };
+  setCache(cacheKey, result, 30 * 60 * 1000); // 30 min
+  return result;
+}
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
+// ── Route: Flight search (SerpApi) ──
+// Accepts altOrigins/altDestinations (comma-separated) for multi-airport search in one call.
 app.get('/api/flights', async (req, res) => {
   try {
-    const { origin, destination, date, adults, children, fromCity, toCity } = req.query;
+    const { origin, destination, date, adults, children, fromCity, toCity, currency,
+            altOrigins, altDestinations } = req.query;
     if (!origin || !destination || !date) {
       return res.status(400).json({ error: 'origin, destination, and date are required' });
     }
 
-    // Validate inputs
+    // Validate primary codes
     if (!/^[A-Z]{3}$/i.test(origin) || !/^[A-Z]{3}$/i.test(destination)) {
       return res.status(400).json({ error: 'Invalid airport codes. Expected 3-letter IATA codes.' });
     }
@@ -445,82 +600,149 @@ app.get('/api/flights', async (req, res) => {
       return res.status(400).json({ error: 'Invalid date format. Expected YYYY-MM-DD.' });
     }
 
-    const params = {
-      origin, destination, date,
-      adults: adults || 1,
-      children: children || 0,
-    };
-    if (fromCity) params.fromCity = fromCity;
-    if (toCity) params.toCity = toCity;
+    const numAdults = parseInt(adults) || 1;
+    const numChildren = parseInt(children) || 0;
+    const userCurrency = (currency && /^[A-Z]{3}$/i.test(currency)) ? currency.toUpperCase() : 'EUR';
 
-    const data = await pythonApiGet('/api/scrape/flights', params);
+    // Build comma-separated airport lists for SerpApi multi-airport search
+    // e.g. origin=DEL + altOrigins=BOM → "DEL,BOM"
+    const allOrigins = [origin.toUpperCase()];
+    const allDests = [destination.toUpperCase()];
+    if (altOrigins) {
+      for (const code of altOrigins.split(',')) {
+        const c = code.trim().toUpperCase();
+        if (/^[A-Z]{3}$/.test(c) && !allOrigins.includes(c)) allOrigins.push(c);
+      }
+    }
+    if (altDestinations) {
+      for (const code of altDestinations.split(',')) {
+        const c = code.trim().toUpperCase();
+        if (/^[A-Z]{3}$/.test(c) && !allDests.includes(c)) allDests.push(c);
+      }
+    }
 
-    res.json(data);
+    // Try SerpApi first — one call searches all airport combinations
+    if (SERPAPI_KEY) {
+      try {
+        const depId = allOrigins.join(',');
+        const arrId = allDests.join(',');
+        console.log(`[flights] [${req.id}] SerpApi: ${depId}->${arrId} on ${date} (${userCurrency})`);
+        const data = await searchFlightsSerpApi(depId, arrId, date, numAdults, numChildren, userCurrency);
+        if (data.flights.length > 0) {
+          console.log(`[flights] [${req.id}] SerpApi returned ${data.flights.length} flights`);
+          return res.json(data);
+        }
+        console.log(`[flights] [${req.id}] SerpApi returned 0 flights`);
+      } catch (serpErr) {
+        console.warn(`[flights] [${req.id}] SerpApi failed: ${serpErr.message}`);
+      }
+    }
+
+    // No results — return empty
+    res.json({ flights: [], carriers: {}, warning: 'No flights found for this route/date.' });
   } catch (err) {
     console.error('flights error:', err.message);
     res.status(502).json({ flights: [], carriers: {}, error: 'Flight search temporarily unavailable. Using estimates.' });
   }
 });
 
-// ── Route: Hotel list by city (via Python scraping service → Booking.com) ──
-app.get('/api/hotels/list', async (req, res) => {
-  try {
-    const { cityCode } = req.query;
-    if (!cityCode) return res.status(400).json({ error: 'cityCode is required' });
+// ── SerpApi Google Hotels search ──
+async function searchHotelsSerpApi(query, checkIn, checkOut, adults = 1, currency = 'EUR') {
+  const cacheKey = `serpapi-hotels:${query}-${checkIn}-${checkOut}-${adults}-${currency}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
 
-    const data = await pythonApiGet('/api/scrape/hotels/list', { cityCode });
-    res.json(data);
-  } catch (err) {
-    console.error('hotels/list error:', err.message);
-    res.status(502).json({ hotels: [], error: 'Hotel search temporarily unavailable.' });
+  const url = new URL('https://serpapi.com/search');
+  url.searchParams.set('engine', 'google_hotels');
+  url.searchParams.set('q', query);
+  url.searchParams.set('check_in_date', checkIn);
+  url.searchParams.set('check_out_date', checkOut);
+  url.searchParams.set('adults', String(adults));
+  url.searchParams.set('currency', currency);
+  url.searchParams.set('api_key', SERPAPI_KEY);
+
+  const resp = await fetch(url.toString(), { signal: AbortSignal.timeout(30000) });
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new Error(`SerpApi Hotels HTTP ${resp.status}: ${body.slice(0, 200)}`);
   }
-});
+  const data = await resp.json();
 
-// ── Route: Hotel offers/pricing (via Python scraping service → Booking.com) ──
-app.get('/api/hotels/offers', async (req, res) => {
+  if (data.error) {
+    throw new Error(`SerpApi Hotels error: ${data.error}`);
+  }
+
+  // SerpApi returns two response formats:
+  // 1. Exact hotel match → single hotel detail at top level (name, rate_per_night, etc.)
+  // 2. Generic search → properties[] array with multiple hotels
+  let hotels = [];
+
+  if (data.name && !data.properties) {
+    // Single hotel detail page (exact name match)
+    const rawPrice = data.rate_per_night?.extracted_lowest || data.total_rate?.extracted_lowest || 0;
+    const hotelId = 'SH' + crypto.createHash('md5').update(data.name).digest('hex').slice(0, 8);
+    if (rawPrice > 0) {
+      hotels.push({
+        hotelId,
+        name: data.name,
+        pricePerNight: round2(convertToEurFrontend(rawPrice, currency)),
+        rating: data.overall_rating || null,
+        reviewCount: data.reviews || null,
+        photoUrl: data.images?.[0]?.thumbnail || null,
+        distance: null,
+        listingUrl: data.link || null,
+        hotelClass: data.extracted_hotel_class || null,
+        source: 'live',
+      });
+    }
+  } else {
+    // Multiple hotel results
+    const properties = data.properties || [];
+    hotels = properties.slice(0, 10).map(p => {
+      const rawPrice = p.rate_per_night?.extracted_lowest || p.total_rate?.extracted_lowest || 0;
+      const idStr = p.name || `hotel-${Math.random()}`;
+      const hotelId = 'SH' + crypto.createHash('md5').update(idStr).digest('hex').slice(0, 8);
+      return {
+        hotelId,
+        name: p.name || 'Hotel',
+        pricePerNight: rawPrice ? round2(convertToEurFrontend(rawPrice, currency)) : 0,
+        rating: p.overall_rating || null,
+        reviewCount: p.reviews || null,
+        photoUrl: p.images?.[0]?.thumbnail || null,
+        distance: null,
+        listingUrl: p.link || null,
+        hotelClass: p.extracted_hotel_class || null,
+        source: 'live',
+      };
+    }).filter(h => h.pricePerNight > 0);
+  }
+
+  const result = { hotels };
+  setCache(cacheKey, result, 30 * 60 * 1000); // 30 min
+  return result;
+}
+
+// ── Route: Hotel search by name (SerpApi Google Hotels) ──
+app.get('/api/hotels/search-by-name', async (req, res) => {
   try {
-    const { hotelIds, checkIn, checkOut, adults } = req.query;
-    if (!hotelIds || !checkIn || !checkOut) {
-      return res.status(400).json({ error: 'hotelIds, checkIn, checkOut are required' });
+    const { query, checkIn, checkOut, adults, currency } = req.query;
+    if (!query || !checkIn || !checkOut) {
+      return res.status(400).json({ error: 'query, checkIn, and checkOut are required' });
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOut)) {
       return res.status(400).json({ error: 'Invalid date format. Expected YYYY-MM-DD.' });
     }
-    if (new Date(checkIn) >= new Date(checkOut)) {
-      return res.status(400).json({ error: 'Check-in date must be before check-out date' });
-    }
 
-    const data = await pythonApiGet('/api/scrape/hotels/offers', {
-      hotelIds, checkIn, checkOut,
-      adults: adults || 1,
-    });
+    const numAdults = parseInt(adults) || 1;
+    const userCurrency = (currency && /^[A-Z]{3}$/i.test(currency)) ? currency.toUpperCase() : 'EUR';
+
+    console.log(`[hotels/search] SerpApi: "${query}" ${checkIn}-${checkOut} (${userCurrency})`);
+    const data = await searchHotelsSerpApi(query, checkIn, checkOut, numAdults, userCurrency);
+    console.log(`[hotels/search] SerpApi returned ${data.hotels.length} hotels`);
     res.json(data);
   } catch (err) {
-    console.error('hotels/offers error:', err.message);
-    res.status(502).json({ offers: [], error: 'Hotel pricing temporarily unavailable.' });
-  }
-});
-
-// ── Route: Hotel list by geocode (via Python scraping service → Booking.com) ──
-app.get('/api/hotels/list-by-geocode', async (req, res) => {
-  try {
-    const { latitude, longitude, radius } = req.query;
-    if (!latitude || !longitude) {
-      return res.status(400).json({ error: 'latitude and longitude are required' });
-    }
-    const lat = parseFloat(latitude), lng = parseFloat(longitude);
-    if (isNaN(lat) || isNaN(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
-      return res.status(400).json({ error: 'Invalid coordinates' });
-    }
-
-    const data = await pythonApiGet('/api/scrape/hotels/list-by-geocode', {
-      latitude, longitude,
-      radius: radius || 5,
-    });
-    res.json(data);
-  } catch (err) {
-    console.error('hotels/list-by-geocode error:', err.message);
-    res.status(502).json({ hotels: [], searchRadius: parseInt(req.query.radius) || 5, error: 'Hotel search temporarily unavailable.' });
+    console.error('hotels/search-by-name error:', err.message);
+    res.status(502).json({ hotels: [], error: 'Hotel search temporarily unavailable.' });
   }
 });
 
@@ -840,5 +1062,4 @@ app.get('*', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Trip Cost Calculator running at http://localhost:${PORT}`);
-  await checkPythonService();
 });

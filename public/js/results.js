@@ -264,7 +264,6 @@ const Results = {
       'Finding best flights...',
       'Searching nearby hotels...',
       'Fetching meal costs...',
-      'Getting hotel offers...',
       'Calculating transfer costs...',
       'Building your itinerary...'
     ];
@@ -292,69 +291,32 @@ const Results = {
       const flightLegs = this.buildFlightLegs(tripData, iataResults);
 
       // Start flights and hotel listings in parallel (both only need IATA)
-      // Search alternate airports too (e.g. KIX alongside ITM for Osaka) and merge results
+      // Pass alternate airports to server — SerpApi searches all in one call
       const flightSearchPromise = Promise.all(
-        flightLegs.map(async leg => {
+        flightLegs.map(leg => {
           if (leg.legType === 'train' || leg.legType === 'skip') return { flights: [] };
           if (!leg.from || !leg.to || leg.from === leg.to) return { flights: [] };
-
-          // Build all airport pairs to search: primary + alternates
-          const origins = [leg.from, ...(leg.alternateFrom || [])];
-          const dests = [leg.to, ...(leg.alternateTo || [])];
-          const pairs = [];
-          const seen = new Set();
-          for (const o of origins) {
-            for (const d of dests) {
-              const key = `${o}-${d}`;
-              if (!seen.has(key) && o !== d) { seen.add(key); pairs.push([o, d]); }
-            }
-          }
-
-          // Search all pairs in parallel (pass city names for better Google Flights results)
-          const results = await Promise.all(
-            pairs.map(([o, d]) =>
-              Api.searchFlights(o, d, leg.date, tripData.adults, tripData.children, leg.fromCityName, leg.toCityName)
-                .catch(() => ({ flights: [] }))
-            )
-          );
-
-          // Merge, deduplicate by flight id, sort by price
-          const allFlights = [];
-          const seenIds = new Set();
-          for (const r of results) {
-            for (const f of (r.flights || [])) {
-              if (!seenIds.has(f.id)) { seenIds.add(f.id); allFlights.push(f); }
-            }
-          }
-          allFlights.sort((a, b) => a.price - b.price);
-
-          // Merge carriers
-          const carriers = {};
-          for (const r of results) { Object.assign(carriers, r.carriers || {}); }
-
-          return { flights: allFlights, carriers };
+          return Api.searchFlights(
+            leg.from, leg.to, leg.date, tripData.adults, tripData.children,
+            leg.fromCityName, leg.toCityName,
+            leg.alternateFrom || [], leg.alternateTo || []
+          ).catch(() => ({ flights: [] }));
         })
       );
 
       Components.updateLoadingStep(2, 'active');
-      // Hotel search: prefer geocode-based, fallback to city code
+      // Hotel search via SerpApi Google Hotels — one call returns names + prices
       const hotelSearchPromise = Promise.all(
         tripData.destinations.map((dest, i) => {
-          const iata = iataResults[i + 1];
-          const cityCode = iata.cityCode;
-          // Prefer city center coords for geocode search
-          const searchLat = iata.cityCenterLat || dest.lat;
-          const searchLng = iata.cityCenterLng || dest.lng;
-          if (searchLat && searchLng) {
-            return Api.listHotelsByGeocode(searchLat, searchLng, 5).catch(err => {
-              console.warn(`Hotel geocode search failed for ${cityCode}, falling back to city code:`, err);
-              return Api.listHotels(cityCode).catch(() => ({ hotels: [] }));
+          const checkIn = this.getCityCheckIn(tripData, iataResults, i);
+          const cityNights = dest.nights ?? 1;
+          const checkOut = Utils.addDays(checkIn, Math.max(1, cityNights));
+          const query = 'hotels in ' + dest.name;
+          return Api.searchHotelsByName(query, checkIn, checkOut, tripData.adults)
+            .catch(err => {
+              console.warn(`Hotel search failed for ${dest.name}:`, err);
+              return { hotels: [] };
             });
-          }
-          return Api.listHotels(cityCode).catch(err => {
-            console.warn(`Hotel list failed for ${cityCode}:`, err);
-            return { hotels: [] };
-          });
         })
       );
 
@@ -452,31 +414,15 @@ const Results = {
         }
       });
 
-      // Hotel offers need hotel list results — start immediately after hotels finish
-      Components.updateLoadingStep(4, 'active');
-      const [hotelOffers, layoverMealResult] = await Promise.all([
-        Promise.all(
-          tripData.destinations.map((dest, i) => {
-            const hotels = hotelResults[i]?.hotels || [];
-            if (hotels.length === 0) return Promise.resolve({ offers: [] });
-            const sampleIds = hotels.slice(0, 20).map(h => h.hotelId);
-            const checkIn = this.getCityCheckIn(tripData, iataResults, i);
-            const cityNights = tripData.destinations[i].nights ?? 1;
-            const checkOut = Utils.addDays(checkIn, Math.max(1, cityNights));
-            return Api.getHotelOffers(sampleIds, checkIn, checkOut, tripData.adults)
-              .catch(() => ({ offers: [] }));
-          })
-        ),
-        allLayovers.length > 0
-          ? Api.getMealCosts(null, null, allLayovers).catch(() => ({ layoverMeals: [] }))
-          : Promise.resolve({ layoverMeals: [] }),
-      ]);
+      // Fetch layover meal costs (if any layovers exist)
+      const layoverMealResult = allLayovers.length > 0
+        ? await Api.getMealCosts(null, null, allLayovers).catch(() => ({ layoverMeals: [] }))
+        : { layoverMeals: [] };
       if (abortSignal.aborted) { this._generating = false; overlay.style.display = 'none'; return; }
-      Components.updateLoadingStep(4, 'done');
 
-      // Step 5: Transfer costs via Google Directions (now with actual hotel coords + bidirectional)
-      Components.updateLoadingStep(5, 'active');
-      this.plan = this.buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, hotelOffers, mealCostResults, layoverMealResult, groundRouteResults, trainRouteResults);
+      // Step 4: Transfer costs via Google Directions (now with actual hotel coords + bidirectional)
+      Components.updateLoadingStep(4, 'active');
+      this.plan = this.buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, mealCostResults, layoverMealResult, groundRouteResults, trainRouteResults);
 
       // Re-fetch flights for legs whose dates changed after arrival-date correction
       const legsToRefetch = [];
@@ -491,13 +437,13 @@ const Results = {
       }
 
       this.plan.transfers = await this.estimateTransfers(this.plan, iataResults);
-      Components.updateLoadingStep(5, 'done');
+      Components.updateLoadingStep(4, 'done');
 
-      // Step 6: Build itinerary
-      Components.updateLoadingStep(6, 'active');
+      // Step 5: Build itinerary
+      Components.updateLoadingStep(5, 'active');
       this.renderTimeline();
       this.renderCostSidebar();
-      Components.updateLoadingStep(6, 'done');
+      Components.updateLoadingStep(5, 'done');
 
       await new Promise(r => setTimeout(r, 400));
       overlay.style.display = 'none';
@@ -674,60 +620,17 @@ const Results = {
     return date;
   },
 
-  buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, hotelOffers, mealCostResults, layoverMealResult, groundRouteResults, trainRouteResults) {
+  buildPlan(tripData, iataResults, flightLegs, flightResults, hotelResults, mealCostResults, layoverMealResult, groundRouteResults, trainRouteResults) {
     const cities = tripData.destinations.map((dest, i) => {
       const iata = iataResults[i + 1];
-      // Build merged hotel options list
-      const hotelOptions = [];
-      const seenIds = new Set();
-      const hotelListMap = {};
-      for (const h of (hotelResults[i]?.hotels || [])) {
-        if (h.hotelId) hotelListMap[h.hotelId] = h;
-      }
-      // Offers first (live pricePerNight)
-      for (const offer of (hotelOffers[i]?.offers || [])) {
-        if (offer.pricePerNight && !seenIds.has(offer.hotelId)) {
-          seenIds.add(offer.hotelId);
-          const listEntry = hotelListMap[offer.hotelId];
-          hotelOptions.push({
-            hotelId: offer.hotelId,
-            name: offer.hotelName || listEntry?.name || 'Hotel',
-            pricePerNight: offer.pricePerNight,
-            roomType: offer.roomType || null,
-            distance: listEntry?.distance?.value || null,
-            photoUrl: offer.photoUrl || listEntry?.photoUrl || null,
-            rating: offer.rating ?? listEntry?.rating ?? null,
-            reviewCount: offer.reviewCount ?? listEntry?.reviewCount ?? null,
-            listingUrl: offer.listingUrl || listEntry?.listingUrl || null,
-            source: 'live',
-          });
-        }
-      }
-      // Hotels from list with price not already in offers
-      for (const hotel of (hotelResults[i]?.hotels || [])) {
-        if (hotel.pricePerNight && !seenIds.has(hotel.hotelId)) {
-          seenIds.add(hotel.hotelId);
-          hotelOptions.push({
-            hotelId: hotel.hotelId,
-            name: hotel.name || 'Hotel',
-            pricePerNight: hotel.pricePerNight,
-            roomType: null,
-            distance: hotel.distance?.value || null,
-            photoUrl: hotel.photoUrl || null,
-            rating: hotel.rating ?? null,
-            reviewCount: hotel.reviewCount ?? null,
-            listingUrl: hotel.listingUrl || null,
-            source: 'estimate',
-          });
-        }
-      }
+      // Build hotel options from SerpApi results (already have prices)
+      const rawHotels = (hotelResults[i]?.hotels || []).filter(h => h.pricePerNight);
       // Filter out unverified hotels (no rating & no reviews) when any verified option exists
-      const verified = hotelOptions.filter(h => h.rating || h.reviewCount);
-      const filtered = verified.length >= 1 ? verified : hotelOptions;
+      const verified = rawHotels.filter(h => h.rating || h.reviewCount);
+      const filtered = verified.length >= 1 ? verified : rawHotels;
       // Sort by price (cheapest first) — keep up to 20 for dual-column display
       filtered.sort((a, b) => a.pricePerNight - b.pricePerNight);
-      hotelOptions.length = 0;
-      hotelOptions.push(...filtered.slice(0, 20));
+      const hotelOptions = filtered.slice(0, 20);
 
       let hotelBasePrice, hotelPriceSource;
       if (hotelOptions.length > 0) {
@@ -1861,28 +1764,12 @@ const Results = {
       if (leg.legType === 'train' || leg.legType === 'skip') return;
       if (leg.selectedMode && leg.selectedMode !== 'flight') return;
       try {
-        // Search alternate airports too
-        const origins = [leg.from, ...(leg.alternateFrom || [])];
-        const dests = [leg.to, ...(leg.alternateTo || [])];
-        const pairs = [];
-        const seen = new Set();
-        for (const o of origins) {
-          for (const d of dests) {
-            const key = `${o}-${d}`;
-            if (!seen.has(key) && o !== d) { seen.add(key); pairs.push([o, d]); }
-          }
-        }
-        const results = await Promise.all(
-          pairs.map(([o, d]) => Api.searchFlights(o, d, leg.date, plan.adults, plan.children, leg.fromCityName, leg.toCityName).catch(() => ({ flights: [] })))
+        const data = await Api.searchFlights(
+          leg.from, leg.to, leg.date, plan.adults, plan.children,
+          leg.fromCityName, leg.toCityName,
+          leg.alternateFrom || [], leg.alternateTo || []
         );
-        const allFlights = [];
-        const seenIds = new Set();
-        for (const r of results) {
-          for (const f of (r.flights || [])) {
-            if (!seenIds.has(f.id)) { seenIds.add(f.id); allFlights.push(f); }
-          }
-        }
-        allFlights.sort((a, b) => a.price - b.price);
+        const allFlights = (data.flights || []).sort((a, b) => a.price - b.price);
         leg.offers = allFlights;
         leg.selectedOffer = allFlights[0] || null;
       } catch (e) {
@@ -1947,6 +1834,83 @@ const Results = {
     }
 
     this.recalculateAndRenderCost();
+  },
+
+  // ── Hotel search by name (SerpApi Google Hotels) ──
+  _hotelSearchTimers: {},
+  _hotelSearchCache: {},
+
+  onHotelSearchInput(input, cityIndex) {
+    clearTimeout(this._hotelSearchTimers[cityIndex]);
+    const query = input.value.trim();
+    const resultsEl = document.getElementById(`hotel-search-results-${cityIndex}`);
+    if (!resultsEl) return;
+
+    if (query.length < 3) {
+      resultsEl.innerHTML = '';
+      return;
+    }
+
+    this._hotelSearchTimers[cityIndex] = setTimeout(async () => {
+      resultsEl.innerHTML = '<div class="hotel-search-loading">Searching...</div>';
+
+      const city = this.plan?.cities?.[cityIndex];
+      if (!city) return;
+
+      const checkIn = city.checkInDate || '';
+      const checkOut = checkIn ? Utils.addDays(checkIn, city.nights || 1) : '';
+      if (!checkIn || !checkOut) {
+        resultsEl.innerHTML = '<div class="hotel-search-no-results">Check-in date not available</div>';
+        return;
+      }
+
+      try {
+        const data = await Api.searchHotelsByName(query, checkIn, checkOut, this.plan.adults || 1);
+        const hotels = data.hotels || [];
+        this._hotelSearchCache[cityIndex] = hotels;
+        this._renderHotelSearchResults(cityIndex, hotels);
+      } catch (e) {
+        console.warn('Hotel search error:', e);
+        resultsEl.innerHTML = '<div class="hotel-search-no-results">Search failed</div>';
+      }
+    }, 500);
+  },
+
+  _renderHotelSearchResults(cityIndex, hotels) {
+    const resultsEl = document.getElementById(`hotel-search-results-${cityIndex}`);
+    if (!resultsEl) return;
+
+    if (hotels.length === 0) {
+      resultsEl.innerHTML = '<div class="hotel-search-no-results">No hotels found</div>';
+      return;
+    }
+
+    const city = this.plan?.cities?.[cityIndex];
+    resultsEl.innerHTML = '<div class="hotel-options">' +
+      hotels.map((hotel, idx) =>
+        Components._buildHotelOptionRow(hotel, cityIndex, -1, false, city)
+          .replace(
+            /onclick="Results\.selectHotelOption\([^)]+\)"/,
+            `onclick="Results.selectSearchedHotel(${cityIndex}, ${idx})"`
+          )
+      ).join('') + '</div>';
+  },
+
+  selectSearchedHotel(cityIndex, searchIdx) {
+    const hotels = this._hotelSearchCache[cityIndex];
+    if (!hotels || !hotels[searchIdx]) return;
+
+    const city = this.plan?.cities?.[cityIndex];
+    if (!city) return;
+
+    const hotel = hotels[searchIdx];
+
+    // Prepend to hotelOptions
+    if (!city.hotelOptions) city.hotelOptions = [];
+    city.hotelOptions.unshift(hotel);
+
+    // Use existing selectHotelOption to handle all selection logic
+    this.selectHotelOption(cityIndex, 0);
   },
 
   updateMealBreakdown(cityIndex) {
@@ -2131,7 +2095,11 @@ const Results = {
     overlay.style.display = 'flex';
     Components.renderLoadingSteps(['Searching flights...']);
     try {
-      const result = await Api.searchFlights(leg.from, leg.to, leg.date, this.plan.adults, this.plan.children);
+      const result = await Api.searchFlights(
+        leg.from, leg.to, leg.date, this.plan.adults, this.plan.children,
+        leg.fromCityName, leg.toCityName,
+        leg.alternateFrom || [], leg.alternateTo || []
+      );
       const flights = result?.flights || [];
       leg.offers = flights;
       leg.selectedOffer = flights[0] || null;
