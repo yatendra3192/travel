@@ -292,15 +292,47 @@ const Results = {
       const flightLegs = this.buildFlightLegs(tripData, iataResults);
 
       // Start flights and hotel listings in parallel (both only need IATA)
+      // Search alternate airports too (e.g. KIX alongside ITM for Osaka) and merge results
       const flightSearchPromise = Promise.all(
-        flightLegs.map(leg => {
-          if (leg.legType === 'train' || leg.legType === 'skip') return Promise.resolve({ flights: [] });
-          if (!leg.from || !leg.to || leg.from === leg.to) return Promise.resolve({ flights: [] });
-          return Api.searchFlights(leg.from, leg.to, leg.date, tripData.adults, tripData.children)
-            .catch(err => {
-              console.warn(`Flight search failed for ${leg.from}-${leg.to}:`, err);
-              return { flights: [] };
-            });
+        flightLegs.map(async leg => {
+          if (leg.legType === 'train' || leg.legType === 'skip') return { flights: [] };
+          if (!leg.from || !leg.to || leg.from === leg.to) return { flights: [] };
+
+          // Build all airport pairs to search: primary + alternates
+          const origins = [leg.from, ...(leg.alternateFrom || [])];
+          const dests = [leg.to, ...(leg.alternateTo || [])];
+          const pairs = [];
+          const seen = new Set();
+          for (const o of origins) {
+            for (const d of dests) {
+              const key = `${o}-${d}`;
+              if (!seen.has(key) && o !== d) { seen.add(key); pairs.push([o, d]); }
+            }
+          }
+
+          // Search all pairs in parallel
+          const results = await Promise.all(
+            pairs.map(([o, d]) =>
+              Api.searchFlights(o, d, leg.date, tripData.adults, tripData.children)
+                .catch(() => ({ flights: [] }))
+            )
+          );
+
+          // Merge, deduplicate by flight id, sort by price
+          const allFlights = [];
+          const seenIds = new Set();
+          for (const r of results) {
+            for (const f of (r.flights || [])) {
+              if (!seenIds.has(f.id)) { seenIds.add(f.id); allFlights.push(f); }
+            }
+          }
+          allFlights.sort((a, b) => a.price - b.price);
+
+          // Merge carriers
+          const carriers = {};
+          for (const r of results) { Object.assign(carriers, r.carriers || {}); }
+
+          return { flights: allFlights, carriers };
         })
       );
 
@@ -495,6 +527,7 @@ const Results = {
 
     // Track the last airport we were at (for routing through no-airport cities)
     let lastAirportCode = originAirport;
+    let lastAlternateAirports = iataResults[0].alternateAirports || [];
     // Use airport name for flight card display (not city/home name)
     let lastAirportName = iataResults[0].airportName || iataResults[0].airportCode;
     let lastCityName = tripData.from.name;
@@ -530,10 +563,13 @@ const Results = {
             toCityName: toName,
             date: currentDate,
             type: i === 0 ? 'outbound' : 'inter-city',
-            legType: 'flight'
+            legType: 'flight',
+            alternateFrom: lastAlternateAirports.map(a => a.code),
+            alternateTo: (destIata.alternateAirports || []).map(a => a.code),
           });
         }
         lastAirportCode = destIata.airportCode;
+        lastAlternateAirports = destIata.alternateAirports || [];
         lastAirportName = destAirportName;
         lastCityName = toName;
       } else if (destIata.transitFromAirport) {
@@ -616,7 +652,9 @@ const Results = {
         toCityName: homeName,
         date: currentDate,
         type: 'return',
-        legType: 'flight'
+        legType: 'flight',
+        alternateFrom: lastAlternateAirports.map(a => a.code),
+        alternateTo: (iataResults[0].alternateAirports || []).map(a => a.code),
       });
     }
 
@@ -1823,10 +1861,30 @@ const Results = {
       if (leg.legType === 'train' || leg.legType === 'skip') return;
       if (leg.selectedMode && leg.selectedMode !== 'flight') return;
       try {
-        const result = await Api.searchFlights(leg.from, leg.to, leg.date, plan.adults, plan.children);
-        const flights = result?.flights || [];
-        leg.offers = flights;
-        leg.selectedOffer = flights[0] || null;
+        // Search alternate airports too
+        const origins = [leg.from, ...(leg.alternateFrom || [])];
+        const dests = [leg.to, ...(leg.alternateTo || [])];
+        const pairs = [];
+        const seen = new Set();
+        for (const o of origins) {
+          for (const d of dests) {
+            const key = `${o}-${d}`;
+            if (!seen.has(key) && o !== d) { seen.add(key); pairs.push([o, d]); }
+          }
+        }
+        const results = await Promise.all(
+          pairs.map(([o, d]) => Api.searchFlights(o, d, leg.date, plan.adults, plan.children).catch(() => ({ flights: [] })))
+        );
+        const allFlights = [];
+        const seenIds = new Set();
+        for (const r of results) {
+          for (const f of (r.flights || [])) {
+            if (!seenIds.has(f.id)) { seenIds.add(f.id); allFlights.push(f); }
+          }
+        }
+        allFlights.sort((a, b) => a.price - b.price);
+        leg.offers = allFlights;
+        leg.selectedOffer = allFlights[0] || null;
       } catch (e) {
         console.warn(`Failed to fetch flights for leg ${li}:`, e);
       }

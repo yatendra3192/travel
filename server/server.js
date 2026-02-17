@@ -165,6 +165,18 @@ async function findNearestAirportAirlabs(lat, lng) {
     const distanceKm = airport.distance || haversineKm(lat, lng, airport.lat, airport.lng);
     console.log(`[AirLabs] Found ${airport.iata_code} (${airport.name}) pop=${airport.popularity} at ${Math.round(distanceKm)}km`);
 
+    // Collect alternate airports (other major airports within 100km, excluding the primary)
+    const alternateAirports = candidates
+      .filter(a => a.iata_code !== airport.iata_code && (a.distance || 999) < 100)
+      .slice(0, 3)
+      .map(a => ({
+        code: a.iata_code,
+        name: a.name,
+        lat: a.lat,
+        lng: a.lng,
+        distanceKm: a.distance || haversineKm(lat, lng, a.lat, a.lng),
+      }));
+
     return {
       airportCode: airport.iata_code,
       cityCode: airport.city_code || airport.iata_code,
@@ -174,6 +186,7 @@ async function findNearestAirportAirlabs(lat, lng) {
       lng: airport.lng,
       distanceKm,
       hasAirport: distanceKm < 80,
+      alternateAirports,
     };
   } catch (e) {
     console.warn('[AirLabs] Error:', e.message);
@@ -291,6 +304,7 @@ app.get('/api/resolve-iata', async (req, res) => {
           hasAirport: airlabs.hasAirport,
           airportLat: airlabs.lat,
           airportLng: airlabs.lng,
+          alternateAirports: airlabs.alternateAirports || [],
         };
 
         if (!airlabs.hasAirport) {
