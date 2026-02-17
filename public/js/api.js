@@ -91,5 +91,12 @@ const Api = {
     const resp = await fetch(`/api/nearby-airports?${params}`);
     const data = await resp.json().catch(() => ({ airports: [] }));
     return data.airports || [];
+  },
+
+  async searchAirports(query) {
+    const params = new URLSearchParams({ q: query });
+    const resp = await fetch(`/api/search-airports?${params}`);
+    const data = await resp.json().catch(() => ({ airports: [] }));
+    return data.airports || [];
   }
 };

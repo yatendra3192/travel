@@ -379,6 +379,42 @@ app.get('/api/nearby-airports', async (req, res) => {
   }
 });
 
+// ── Route: Search airports by name/keyword ──
+app.get('/api/search-airports', async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.length < 2) return res.json({ airports: [] });
+
+    const cacheKey = `search-airports:${q.toLowerCase().trim()}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
+
+    const url = `https://airlabs.co/api/v9/suggest?q=${encodeURIComponent(q)}&api_key=${AIRLABS_API_KEY}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) return res.json({ airports: [] });
+    const data = await resp.json();
+
+    // Suggest API returns { response: { airports: [...], cities: [...], ... } }
+    const rawAirports = data.response?.airports || [];
+    const airports = rawAirports
+      .filter(a => a.iata_code)
+      .slice(0, 10)
+      .map(a => ({
+        code: a.iata_code,
+        name: a.name,
+        city: a.city || a.city_code || '',
+        country: a.country_code || '',
+      }));
+
+    const result = { airports };
+    setCache(cacheKey, result);
+    res.json(result);
+  } catch (e) {
+    console.warn('[search-airports]', e.message);
+    res.json({ airports: [] });
+  }
+});
+
 // ── Route: Flight search (via Python scraping service → Skyscanner) ──
 app.get('/api/flights', async (req, res) => {
   try {

@@ -1918,7 +1918,6 @@ const Results = {
     // Determine which city's coords to use
     let lat, lng, currentCode;
     if (side === 'from') {
-      // Origin city of this leg
       if (legIndex === 0) {
         lat = this.plan.from.cityLat || this.plan.from.lat;
         lng = this.plan.from.cityLng || this.plan.from.lng;
@@ -1936,41 +1935,115 @@ const Results = {
     if (!lat || !lng) return;
 
     // Fetch nearby airports
-    const airports = await Api.getNearbyAirports(lat, lng);
-    if (!airports || airports.length === 0) return;
+    const nearbyAirports = await Api.getNearbyAirports(lat, lng);
 
-    // Show popup with airport options
+    // Build popup
     const overlay = document.createElement('div');
     overlay.className = 'popup-overlay';
     overlay.innerHTML = `
       <div class="airport-picker-popup">
         <h3>Select Airport</h3>
-        <div class="airport-picker-list">
-          ${airports.map(a => `
-            <div class="airport-picker-item${a.code === currentCode ? ' selected' : ''}" data-code="${Utils.escapeHtml(a.code)}" data-name="${Utils.escapeHtml(a.name)}">
-              <div class="airport-picker-code">${Utils.escapeHtml(a.code)}</div>
-              <div class="airport-picker-info">
-                <div class="airport-picker-name">${Utils.escapeHtml(a.name)}</div>
-                <div class="airport-picker-dist">${a.distance} km away</div>
-              </div>
-            </div>
-          `).join('')}
+        <div class="airport-search-box">
+          <input type="text" class="airport-search-input" placeholder="Search any airport..." autocomplete="off">
+        </div>
+        <div class="airport-picker-section nearby-section">
+          <div class="airport-section-label">Nearby Airports</div>
+          <div class="airport-picker-list" id="nearby-airport-list">
+            ${this._renderAirportItems(nearbyAirports, currentCode, true)}
+          </div>
+        </div>
+        <div class="airport-picker-section search-section" style="display:none">
+          <div class="airport-section-label">Search Results</div>
+          <div class="airport-picker-list" id="search-airport-list"></div>
         </div>
         <button class="popup-cancel-btn" onclick="this.closest('.popup-overlay').remove()">Cancel</button>
       </div>
     `;
     document.body.appendChild(overlay);
 
-    overlay.querySelectorAll('.airport-picker-item').forEach(item => {
-      item.addEventListener('click', async () => {
-        const newCode = item.dataset.code;
-        const newName = item.dataset.name;
-        overlay.remove();
-        if (newCode === currentCode) return;
-        await this.changeFlightAirport(legIndex, side, newCode, newName);
+    // Bind click handlers for airport items
+    const bindItemClicks = (container) => {
+      container.querySelectorAll('.airport-picker-item').forEach(item => {
+        item.addEventListener('click', async () => {
+          const newCode = item.dataset.code;
+          const newName = item.dataset.name;
+          overlay.remove();
+          if (newCode === currentCode) return;
+          await this.changeFlightAirport(legIndex, side, newCode, newName);
+        });
       });
+    };
+    bindItemClicks(overlay.querySelector('#nearby-airport-list'));
+
+    // Search input with debounce
+    const searchInput = overlay.querySelector('.airport-search-input');
+    const nearbySection = overlay.querySelector('.nearby-section');
+    const searchSection = overlay.querySelector('.search-section');
+    const searchList = overlay.querySelector('#search-airport-list');
+    const nearbyList = overlay.querySelector('#nearby-airport-list');
+    let searchTimer = null;
+
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      const q = searchInput.value.trim();
+
+      // Filter nearby list client-side
+      if (q) {
+        const lower = q.toLowerCase();
+        const filtered = nearbyAirports.filter(a =>
+          a.name.toLowerCase().includes(lower) || a.code.toLowerCase().includes(lower)
+        );
+        nearbyList.innerHTML = filtered.length
+          ? this._renderAirportItems(filtered, currentCode, true)
+          : '<div class="airport-no-results">No nearby matches</div>';
+        bindItemClicks(nearbyList);
+      } else {
+        nearbyList.innerHTML = this._renderAirportItems(nearbyAirports, currentCode, true);
+        bindItemClicks(nearbyList);
+        searchSection.style.display = 'none';
+        return;
+      }
+
+      // Remote search after 300ms for 2+ chars
+      if (q.length >= 2) {
+        searchTimer = setTimeout(async () => {
+          searchList.innerHTML = '<div class="airport-search-loading">Searching...</div>';
+          searchSection.style.display = '';
+          const results = await Api.searchAirports(q);
+          // Filter out airports already in nearby list
+          const nearbyCodes = new Set(nearbyAirports.map(a => a.code));
+          const extra = results.filter(a => !nearbyCodes.has(a.code));
+          if (extra.length) {
+            searchList.innerHTML = this._renderAirportItems(extra, currentCode, false);
+            bindItemClicks(searchList);
+          } else {
+            searchList.innerHTML = '<div class="airport-no-results">No additional airports found</div>';
+          }
+        }, 300);
+      } else {
+        searchSection.style.display = 'none';
+      }
     });
+
+    searchInput.focus();
     overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  },
+
+  _renderAirportItems(airports, currentCode, showDistance) {
+    if (!airports || airports.length === 0) return '<div class="airport-no-results">No airports found</div>';
+    return airports.map(a => {
+      const subtitle = showDistance && a.distance != null
+        ? `${a.distance} km away`
+        : [a.city, a.country].filter(Boolean).join(', ');
+      return `
+        <div class="airport-picker-item${a.code === currentCode ? ' selected' : ''}" data-code="${Utils.escapeHtml(a.code)}" data-name="${Utils.escapeHtml(a.name)}">
+          <div class="airport-picker-code">${Utils.escapeHtml(a.code)}</div>
+          <div class="airport-picker-info">
+            <div class="airport-picker-name">${Utils.escapeHtml(a.name)}</div>
+            <div class="airport-picker-dist">${Utils.escapeHtml(subtitle)}</div>
+          </div>
+        </div>`;
+    }).join('');
   },
 
   async changeFlightAirport(legIndex, side, newCode, newName) {
