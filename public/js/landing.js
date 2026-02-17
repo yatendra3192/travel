@@ -195,12 +195,19 @@ const Landing = {
 
   renderChips() {
     this.chipsContainer.innerHTML = '';
+    const total = this.destinations.length;
     this.destinations.forEach((dest, i) => {
       const chip = document.createElement('div');
       chip.className = 'dest-chip';
+      chip.draggable = true;
+      chip.dataset.index = i;
       const nights = dest.nights ?? 1;
       chip.innerHTML = `
         <div class="dest-chip-top">
+          <div class="dest-chip-reorder">
+            <button type="button" class="dest-move-btn up" ${i === 0 ? 'disabled' : ''} aria-label="Move left">&#8249;</button>
+            <button type="button" class="dest-move-btn down" ${i === total - 1 ? 'disabled' : ''} aria-label="Move right">&#8250;</button>
+          </div>
           <span class="dest-chip-name">${Utils.escapeHtml(dest.name)}</span>
           <button type="button" class="chip-remove" title="Remove" aria-label="Remove ${Utils.escapeHtml(dest.name)}">&times;</button>
         </div>
@@ -211,11 +218,20 @@ const Landing = {
           <span class="dest-nights-label">${nights === 0 ? 'pass-through' : nights === 1 ? 'night' : 'nights'}</span>
         </div>
       `;
+      // Move buttons
+      chip.querySelector('.dest-move-btn.up').addEventListener('click', () => {
+        if (i > 0) { [this.destinations[i - 1], this.destinations[i]] = [this.destinations[i], this.destinations[i - 1]]; this.renderChips(); }
+      });
+      chip.querySelector('.dest-move-btn.down').addEventListener('click', () => {
+        if (i < total - 1) { [this.destinations[i], this.destinations[i + 1]] = [this.destinations[i + 1], this.destinations[i]]; this.renderChips(); }
+      });
+      // Remove
       chip.querySelector('.chip-remove').addEventListener('click', () => {
         this.destinations.splice(i, 1);
         this.renderChips();
         this.validateForm();
       });
+      // Nights stepper
       const valEl = chip.querySelector('.dest-nights-val');
       const labelEl = chip.querySelector('.dest-nights-label');
       chip.querySelector('.dest-nights-btn.minus').addEventListener('click', () => {
@@ -227,6 +243,26 @@ const Landing = {
         dest.nights = Math.min(30, (dest.nights ?? 1) + 1);
         valEl.textContent = dest.nights;
         labelEl.textContent = dest.nights === 1 ? 'night' : 'nights';
+      });
+      // Drag-and-drop
+      chip.addEventListener('dragstart', (e) => {
+        chip.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(i));
+      });
+      chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
+      chip.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; chip.classList.add('drag-over'); });
+      chip.addEventListener('dragleave', () => chip.classList.remove('drag-over'));
+      chip.addEventListener('drop', (e) => {
+        e.preventDefault();
+        chip.classList.remove('drag-over');
+        const fromIdx = parseInt(e.dataTransfer.getData('text/plain'));
+        const toIdx = i;
+        if (fromIdx !== toIdx) {
+          const [moved] = this.destinations.splice(fromIdx, 1);
+          this.destinations.splice(toIdx, 0, moved);
+          this.renderChips();
+        }
       });
       this.chipsContainer.appendChild(chip);
     });
