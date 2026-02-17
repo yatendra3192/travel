@@ -20,7 +20,8 @@ from config import PAGE_TIMEOUT
 
 
 async def scrape_flights(
-    origin: str, destination: str, date: str, adults: int = 1, children: int = 0
+    origin: str, destination: str, date: str, adults: int = 1, children: int = 0,
+    from_city: str = None, to_city: str = None
 ) -> dict:
     """Scrape flight data from Google Flights.
 
@@ -34,7 +35,7 @@ async def scrape_flights(
     empty_result = {"flights": [], "carriers": {}}
 
     async def _do_scrape():
-        return await _scrape_google_flights(origin, destination, date, adults, children)
+        return await _scrape_google_flights(origin, destination, date, adults, children, from_city, to_city)
 
     try:
         result = await retry_with_backoff(
@@ -50,13 +51,17 @@ async def scrape_flights(
 
 
 async def _scrape_google_flights(
-    origin: str, destination: str, date: str, adults: int, children: int
+    origin: str, destination: str, date: str, adults: int, children: int,
+    from_city: str = None, to_city: str = None
 ) -> dict:
     """Navigate to Google Flights and parse flight results from DOM."""
     # Build Google Flights URL with natural language query (one-way)
+    # Use city names when available for better results (Google picks best airport)
+    from_term = from_city.replace(' ', '+') if from_city else origin
+    to_term = to_city.replace(' ', '+') if to_city else destination
     passengers = adults + children
     url = (
-        f"https://www.google.com/travel/flights?q=one+way+flight+from+{origin}+to+{destination}"
+        f"https://www.google.com/travel/flights?q=one+way+flight+from+{from_term}+to+{to_term}"
         f"+on+{date}+{passengers}+passengers&curr=EUR&hl=en"
     )
 

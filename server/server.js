@@ -429,10 +429,10 @@ app.get('/api/search-airports', async (req, res) => {
   }
 });
 
-// ── Route: Flight search (via Python scraping service → Skyscanner) ──
+// ── Route: Flight search (via Python scraping service → Google Flights) ──
 app.get('/api/flights', async (req, res) => {
   try {
-    const { origin, destination, date, adults, children } = req.query;
+    const { origin, destination, date, adults, children, fromCity, toCity } = req.query;
     if (!origin || !destination || !date) {
       return res.status(400).json({ error: 'origin, destination, and date are required' });
     }
@@ -445,11 +445,15 @@ app.get('/api/flights', async (req, res) => {
       return res.status(400).json({ error: 'Invalid date format. Expected YYYY-MM-DD.' });
     }
 
-    const data = await pythonApiGet('/api/scrape/flights', {
+    const params = {
       origin, destination, date,
       adults: adults || 1,
       children: children || 0,
-    });
+    };
+    if (fromCity) params.fromCity = fromCity;
+    if (toCity) params.toCity = toCity;
+
+    const data = await pythonApiGet('/api/scrape/flights', params);
 
     res.json(data);
   } catch (err) {

@@ -83,7 +83,7 @@ async def health():
     }
 
 
-# ── Flight search (Skyscanner) ──
+# ── Flight search (Google Flights) ──
 @app.get("/api/scrape/flights")
 async def api_flights(
     request: Request,
@@ -92,6 +92,8 @@ async def api_flights(
     date: str = Query(..., description="Departure date YYYY-MM-DD"),
     adults: int = Query(1, ge=1, le=9),
     children: int = Query(0, ge=0, le=6),
+    fromCity: str = Query(None, description="Origin city name"),
+    toCity: str = Query(None, description="Destination city name"),
 ):
     global _active_requests
     request_id = request.headers.get("x-request-id", "no-id")
@@ -104,6 +106,8 @@ async def api_flights(
             date=date,
             adults=adults,
             children=children,
+            from_city=fromCity,
+            to_city=toCity,
         )
         if result.get("flights"):
             _scraper_stats["flights"]["success"] += 1

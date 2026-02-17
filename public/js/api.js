@@ -13,12 +13,14 @@ const Api = {
     return resp.json();
   },
 
-  async searchFlights(origin, destination, date, adults, children) {
+  async searchFlights(origin, destination, date, adults, children, fromCity, toCity) {
     const params = new URLSearchParams({
       origin, destination, date,
       adults: String(adults || 1),
       children: String(children || 0)
     });
+    if (fromCity) params.set('fromCity', fromCity);
+    if (toCity) params.set('toCity', toCity);
     const resp = await fetch(`/api/flights?${params}`);
     const data = await resp.json().catch(() => ({ flights: [], carriers: {} }));
     if (data.error) console.warn('Flights API:', data.error);

@@ -310,10 +310,10 @@ const Results = {
             }
           }
 
-          // Search all pairs in parallel
+          // Search all pairs in parallel (pass city names for better Google Flights results)
           const results = await Promise.all(
             pairs.map(([o, d]) =>
-              Api.searchFlights(o, d, leg.date, tripData.adults, tripData.children)
+              Api.searchFlights(o, d, leg.date, tripData.adults, tripData.children, leg.fromCityName, leg.toCityName)
                 .catch(() => ({ flights: [] }))
             )
           );
@@ -1873,7 +1873,7 @@ const Results = {
           }
         }
         const results = await Promise.all(
-          pairs.map(([o, d]) => Api.searchFlights(o, d, leg.date, plan.adults, plan.children).catch(() => ({ flights: [] })))
+          pairs.map(([o, d]) => Api.searchFlights(o, d, leg.date, plan.adults, plan.children, leg.fromCityName, leg.toCityName).catch(() => ({ flights: [] })))
         );
         const allFlights = [];
         const seenIds = new Set();
