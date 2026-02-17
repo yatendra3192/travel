@@ -882,6 +882,12 @@ const Components = {
     const headerLinkHtml = sel.listingUrl
       ? `<a class="hotel-option-link" href="${Utils.escapeHtml(sel.listingUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Booking.com">&#8599;</a>`
       : '';
+    let headerMapsHtml = '';
+    if (city.lat && city.lng && sel.name) {
+      const origin = `${city.lat},${city.lng}`;
+      const dest = encodeURIComponent(`${sel.name}, ${city.name || ''}`);
+      headerMapsHtml = `<a class="hotel-option-link" href="https://www.google.com/maps/dir/${origin}/${dest}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Google Maps">&#128506;</a>`;
+    }
     let headerRatingHtml = '';
     if (sel.rating) {
       const revText = sel.reviewCount ? `(${sel.reviewCount.toLocaleString()})` : '';
@@ -893,7 +899,7 @@ const Components = {
       <div class="card-header" aria-expanded="false" onclick="Components.toggleCard(this)">
         ${headerPhotoHtml}
         <div class="card-title">
-          <h4>${Utils.escapeHtml(hotelNameDisplay)} ${headerLinkHtml}</h4>
+          <h4>${Utils.escapeHtml(hotelNameDisplay)} ${headerLinkHtml}${headerMapsHtml}</h4>
           <span class="card-subtitle">${city.nights} night${city.nights !== 1 ? 's' : ''} stay &middot; ${Utils.formatCurrency(nightlyRate, 'EUR')}/night${headerRatingHtml ? ` &middot; <span class="hotel-option-rating">${headerRatingHtml}</span>` : ''}${headerMeta ? ` &middot; ${Utils.escapeHtml(headerMeta)}` : ''}</span>
           ${schedHtml}
         </div>
