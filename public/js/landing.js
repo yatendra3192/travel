@@ -1,6 +1,7 @@
 const Landing = {
   fromPlace: null,
   destinations: [],
+  tripMode: 'roundtrip',
   sessionToken: null,
   _highlightIdx: -1,
 
@@ -17,6 +18,15 @@ const Landing = {
     this.setupAutocomplete();
     this.setupSteppers();
     this.setupFormSubmit();
+
+    // Trip type toggle
+    document.querySelectorAll('.trip-type-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.trip-type-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.tripMode = btn.dataset.mode;
+      });
+    });
 
     document.addEventListener('click', (e) => {
       if (!e.target.closest('#from-input') && !e.target.closest('#from-dropdown')) {
@@ -316,6 +326,7 @@ const Landing = {
         adults: parseInt(document.getElementById('adults-count').textContent),
         children: parseInt(document.getElementById('children-count').textContent),
         infants: parseInt(document.getElementById('infants-count').textContent),
+        tripMode: this.tripMode,
       };
 
       App.startCalculation(tripData);

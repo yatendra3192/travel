@@ -85,4 +85,34 @@ const Api = {
     const data = await resp.json().catch(() => ({ hotels: [] }));
     return data;
   },
+
+  async generateItinerary(destinations, tripMode) {
+    const resp = await fetch('/api/itinerary/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ destinations, tripMode }),
+    });
+    const data = await resp.json().catch(() => ({ itinerary: { days: [] } }));
+    return data;
+  },
+
+  async resolvePlace(name, city, lat, lng) {
+    const params = new URLSearchParams({ name });
+    if (city) params.set('city', city);
+    if (lat != null) params.set('lat', String(lat));
+    if (lng != null) params.set('lng', String(lng));
+    const resp = await fetch(`/api/places/resolve?${params}`);
+    if (!resp.ok) return null;
+    return resp.json();
+  },
+
+  async searchPlaces(query, lat, lng, radius) {
+    const params = new URLSearchParams({ query });
+    if (lat != null) params.set('lat', String(lat));
+    if (lng != null) params.set('lng', String(lng));
+    if (radius) params.set('radius', String(radius));
+    const resp = await fetch(`/api/places/search?${params}`);
+    const data = await resp.json().catch(() => ({ places: [] }));
+    return data;
+  },
 };

@@ -19,10 +19,22 @@ const Results = {
   init() {
     document.getElementById('back-btn').addEventListener('click', () => App.goBack());
 
-    // Bottom sheet toggle
+    // Bottom cost bar "Details" button — opens mobile bottom sheet
+    document.getElementById('cost-details-btn')?.addEventListener('click', () => {
+      const bar = document.getElementById('mobile-cost-bar');
+      if (bar) {
+        bar.classList.add('expanded');
+        bar.style.display = 'flex';
+      }
+    });
+
+    // Bottom sheet close
     document.getElementById('mobile-details-btn')?.addEventListener('click', () => {
       const bar = document.getElementById('mobile-cost-bar');
-      bar.classList.toggle('expanded');
+      if (bar) {
+        bar.classList.remove('expanded');
+        bar.style.display = 'none';
+      }
     });
 
     // Bottom sheet touch drag support
@@ -103,8 +115,11 @@ const Results = {
       else document.getElementById('header-to-dropdown').classList.remove('show');
     });
 
-    // Focus the to-input when clicking the chips wrap area
-    document.querySelector('.header-chips-wrap')?.addEventListener('click', () => toInput.focus());
+    // Focus the to-input when clicking the dest row area
+    document.querySelector('.header-dest-row')?.addEventListener('click', (e) => {
+      if (e.target.closest('.dest-chip')) return;
+      toInput.focus();
+    });
 
     // Currency change re-renders all displayed costs
     document.getElementById('header-currency')?.addEventListener('change', (e) => {
@@ -192,10 +207,60 @@ const Results = {
   _renderHeaderChips() {
     const container = document.getElementById('header-dest-chips');
     container.innerHTML = '';
+    const total = this.tripData.destinations.length;
     this.tripData.destinations.forEach((dest, i) => {
-      const chip = Components.createChip(dest.name, () => {
+      const chip = document.createElement('div');
+      chip.className = 'dest-chip';
+      chip.draggable = true;
+      chip.dataset.index = i;
+      const nights = dest.nights ?? 1;
+      chip.innerHTML = `
+        <div class="dest-chip-top">
+          <div class="dest-chip-reorder">
+            <button type="button" class="dest-move-btn up" ${i === 0 ? 'disabled' : ''} aria-label="Move left">&#8249;</button>
+            <button type="button" class="dest-move-btn down" ${i === total - 1 ? 'disabled' : ''} aria-label="Move right">&#8250;</button>
+          </div>
+          <span class="dest-chip-name">${Utils.escapeHtml(dest.name)}</span>
+          <button type="button" class="chip-remove" title="Remove" aria-label="Remove ${Utils.escapeHtml(dest.name)}">&times;</button>
+        </div>
+        <div class="dest-chip-nights">
+          <button type="button" class="dest-nights-btn minus" aria-label="Decrease nights">-</button>
+          <span class="dest-nights-val">${nights}</span>
+          <button type="button" class="dest-nights-btn plus" aria-label="Increase nights">+</button>
+          <span class="dest-nights-label">${nights === 0 ? 'pass-through' : nights === 1 ? 'night' : 'nights'}</span>
+        </div>
+      `;
+      chip.querySelector('.dest-move-btn.up').addEventListener('click', () => {
+        if (i > 0) { [this.tripData.destinations[i - 1], this.tripData.destinations[i]] = [this.tripData.destinations[i], this.tripData.destinations[i - 1]]; this._renderHeaderChips(); }
+      });
+      chip.querySelector('.dest-move-btn.down').addEventListener('click', () => {
+        if (i < total - 1) { [this.tripData.destinations[i], this.tripData.destinations[i + 1]] = [this.tripData.destinations[i + 1], this.tripData.destinations[i]]; this._renderHeaderChips(); }
+      });
+      chip.querySelector('.chip-remove').addEventListener('click', () => {
         this.tripData.destinations.splice(i, 1);
         this._renderHeaderChips();
+      });
+      const valEl = chip.querySelector('.dest-nights-val');
+      const labelEl = chip.querySelector('.dest-nights-label');
+      chip.querySelector('.dest-nights-btn.minus').addEventListener('click', () => {
+        dest.nights = Math.max(0, (dest.nights ?? 1) - 1);
+        valEl.textContent = dest.nights;
+        labelEl.textContent = dest.nights === 0 ? 'pass-through' : dest.nights === 1 ? 'night' : 'nights';
+      });
+      chip.querySelector('.dest-nights-btn.plus').addEventListener('click', () => {
+        dest.nights = Math.min(30, (dest.nights ?? 1) + 1);
+        valEl.textContent = dest.nights;
+        labelEl.textContent = dest.nights === 1 ? 'night' : 'nights';
+      });
+      chip.addEventListener('dragstart', (e) => { chip.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); });
+      chip.addEventListener('dragend', () => chip.classList.remove('dragging'));
+      chip.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; chip.classList.add('drag-over'); });
+      chip.addEventListener('dragleave', () => chip.classList.remove('drag-over'));
+      chip.addEventListener('drop', (e) => {
+        e.preventDefault();
+        chip.classList.remove('drag-over');
+        const fromIdx = parseInt(e.dataTransfer.getData('text/plain'));
+        if (fromIdx !== i) { const [moved] = this.tripData.destinations.splice(fromIdx, 1); this.tripData.destinations.splice(i, 0, moved); this._renderHeaderChips(); }
       });
       container.appendChild(chip);
     });
@@ -265,6 +330,8 @@ const Results = {
       'Searching nearby hotels...',
       'Fetching meal costs...',
       'Calculating transfer costs...',
+      'Generating itinerary...',
+      'Resolving attractions...',
       'Building your itinerary...'
     ];
     Components.renderLoadingSteps(steps);
@@ -439,11 +506,105 @@ const Results = {
       this.plan.transfers = await this.estimateTransfers(this.plan, iataResults);
       Components.updateLoadingStep(4, 'done');
 
-      // Step 5: Build itinerary
+      // Step 5: Generate AI itinerary (activities per city)
       Components.updateLoadingStep(5, 'active');
-      this.renderTimeline();
-      this.renderCostSidebar();
+      let aiResult = { days: [] };
+      try {
+        const destinations = this.plan.cities.map(c => ({
+          name: c.name, nights: c.nights,
+          lat: c.lat, lng: c.lng,
+        }));
+        const aiResp = await Api.generateItinerary(destinations, this.plan.tripMode);
+        aiResult = aiResp?.itinerary || { days: [] };
+      } catch (e) {
+        console.warn('AI itinerary generation failed, continuing without activities:', e);
+      }
+      if (abortSignal.aborted) { this._generating = false; overlay.style.display = 'none'; return; }
       Components.updateLoadingStep(5, 'done');
+
+      // Step 6: Resolve Google Places for AI-suggested activities
+      Components.updateLoadingStep(6, 'active');
+      const placeData = {};
+      if (aiResult.days && aiResult.days.length > 0) {
+        const placePromises = [];
+        for (const day of aiResult.days) {
+          if (!day.activities) continue;
+          for (const act of day.activities) {
+            const city = day.city || '';
+            const cityObj = this.plan.cities.find(c =>
+              c.name.toLowerCase().includes(city.toLowerCase()) || city.toLowerCase().includes(c.name.toLowerCase())
+            );
+            placePromises.push(
+              Api.resolvePlace(act.name, city, cityObj?.lat, cityObj?.lng)
+                .then(result => {
+                  if (result) placeData[`${act.name}:${city}`] = result;
+                })
+                .catch(() => {})
+            );
+          }
+        }
+        // Resolve in batches of 3 to avoid overwhelming the API
+        for (let i = 0; i < placePromises.length; i += 3) {
+          await Promise.all(placePromises.slice(i, i + 3));
+          if (abortSignal.aborted) { this._generating = false; overlay.style.display = 'none'; return; }
+        }
+      }
+      Components.updateLoadingStep(6, 'done');
+
+      // Step 7: Build day-by-day itinerary and render
+      Components.updateLoadingStep(7, 'active');
+
+      // Fetch transit routes between activities (hotel→activity, activity→activity, activity→hotel)
+      const transitData = {};
+      if (aiResult.days && aiResult.days.length > 0) {
+        const transitPromises = [];
+        for (const day of aiResult.days) {
+          if (!day.activities || day.activities.length === 0) continue;
+          const city = day.city || '';
+          const cityObj = this.plan.cities.find(c =>
+            c.name.toLowerCase().includes(city.toLowerCase()) || city.toLowerCase().includes(c.name.toLowerCase())
+          );
+          if (!cityObj) continue;
+
+          // Build chain: hotel → act1 → act2 → ... → hotel
+          const points = [
+            { lat: cityObj.hotelLat, lng: cityObj.hotelLng },
+            ...day.activities.map(a => {
+              const p = placeData[`${a.name}:${city}`];
+              return { lat: p?.lat || cityObj.hotelLat, lng: p?.lng || cityObj.hotelLng };
+            }),
+            { lat: cityObj.hotelLat, lng: cityObj.hotelLng },
+          ];
+
+          for (let pi = 0; pi < points.length - 1; pi++) {
+            const from = points[pi], to = points[pi + 1];
+            if (!from.lat || !to.lat) continue;
+            const key = `${from.lat},${from.lng}->${to.lat},${to.lng}`;
+            if (transitData[key]) continue; // already fetched
+            transitPromises.push(
+              Api.getTransferEstimate(from.lat, from.lng, to.lat, to.lng, cityObj.country)
+                .then(result => { if (result) transitData[key] = result; })
+                .catch(() => {})
+            );
+          }
+        }
+        // Batch transit fetches
+        for (let i = 0; i < transitPromises.length; i += 5) {
+          await Promise.all(transitPromises.slice(i, i + 5));
+          if (abortSignal.aborted) { this._generating = false; overlay.style.display = 'none'; return; }
+        }
+      }
+
+      // Compute schedule times before building itinerary (so times are available)
+      this._computeTimelineSchedule();
+
+      // Build day-by-day itinerary
+      Itinerary.buildDays(this.plan, aiResult, placeData, transitData);
+
+      // Render the day grid (primary view) — replaces the legacy timeline
+      Itinerary.render(this.plan);
+      this.renderCostSidebar();
+      Components.updateLoadingStep(7, 'done');
 
       await new Promise(r => setTimeout(r, 400));
       overlay.style.display = 'none';
@@ -500,6 +661,12 @@ const Results = {
           });
         } else {
           // Normal flight leg
+          // Build code→name map for primary + alternate airports (used to update header)
+          const airportNames = {};
+          airportNames[lastAirportCode] = lastAirportName;
+          for (const a of lastAlternateAirports) airportNames[a.code] = a.name;
+          airportNames[destIata.airportCode] = destAirportName;
+          for (const a of (destIata.alternateAirports || [])) airportNames[a.code] = a.name;
           legs.push({
             from: lastAirportCode,
             to: destIata.airportCode,
@@ -512,6 +679,7 @@ const Results = {
             legType: 'flight',
             alternateFrom: lastAlternateAirports.map(a => a.code),
             alternateTo: (destIata.alternateAirports || []).map(a => a.code),
+            airportNames,
           });
         }
         lastAirportCode = destIata.airportCode;
@@ -573,35 +741,43 @@ const Results = {
       currentDate = Utils.addDays(currentDate, 1 + cityNights);
     }
 
-    // Return leg: from last airport to origin
-    const homeName = tripData.from.name;
-    if (lastAirportCode === originAirport) {
-      // Same airport — skip flight, direct ground transfer home
-      legs.push({
-        from: lastAirportCode,
-        to: null,
-        fromName: lastAirportName,
-        toName: iataResults[0].cityName || iataResults[0].airportName || originAirport,
-        fromCityName: lastCityName,
-        toCityName: homeName,
-        date: currentDate,
-        type: 'return',
-        legType: 'skip',
-      });
-    } else {
-      legs.push({
-        from: lastAirportCode,
-        to: originAirport,
-        fromName: lastAirportName,
-        toName: iataResults[0].airportName || iataResults[0].airportCode,
-        fromCityName: lastCityName,
-        toCityName: homeName,
-        date: currentDate,
-        type: 'return',
-        legType: 'flight',
-        alternateFrom: lastAlternateAirports.map(a => a.code),
-        alternateTo: (iataResults[0].alternateAirports || []).map(a => a.code),
-      });
+    // Return leg: from last airport to origin (skip for one-way trips)
+    if (tripData.tripMode !== 'oneway') {
+      const homeName = tripData.from.name;
+      if (lastAirportCode === originAirport) {
+        // Same airport — skip flight, direct ground transfer home
+        legs.push({
+          from: lastAirportCode,
+          to: null,
+          fromName: lastAirportName,
+          toName: iataResults[0].cityName || iataResults[0].airportName || originAirport,
+          fromCityName: lastCityName,
+          toCityName: homeName,
+          date: currentDate,
+          type: 'return',
+          legType: 'skip',
+        });
+      } else {
+        const returnAirportNames = {};
+        returnAirportNames[lastAirportCode] = lastAirportName;
+        for (const a of lastAlternateAirports) returnAirportNames[a.code] = a.name;
+        returnAirportNames[originAirport] = iataResults[0].airportName || iataResults[0].airportCode;
+        for (const a of (iataResults[0].alternateAirports || [])) returnAirportNames[a.code] = a.name;
+        legs.push({
+          from: lastAirportCode,
+          to: originAirport,
+          fromName: lastAirportName,
+          toName: iataResults[0].airportName || iataResults[0].airportCode,
+          fromCityName: lastCityName,
+          toCityName: homeName,
+          date: currentDate,
+          type: 'return',
+          legType: 'flight',
+          alternateFrom: lastAlternateAirports.map(a => a.code),
+          alternateTo: (iataResults[0].alternateAirports || []).map(a => a.code),
+          airportNames: returnAirportNames,
+        });
+      }
     }
 
     return legs;
@@ -747,6 +923,9 @@ const Results = {
       };
     });
 
+    // Update header airport names to match selected offer's actual airports
+    enrichedFlightLegs.forEach(leg => Components._updateLegAirportNames(leg));
+
     // Save original search dates before arrival-based corrections
     enrichedFlightLegs.forEach(leg => { leg.searchedDate = leg.date; });
 
@@ -767,6 +946,7 @@ const Results = {
       children: tripData.children,
       infants: tripData.infants || 0,
       departureDate: tripData.departureDate,
+      tripMode: tripData.tripMode || 'roundtrip',
       currency: 'EUR',
     };
   },
@@ -1155,8 +1335,11 @@ const Results = {
     const cityTransfers = await Promise.all(cityTransferPromises);
     transfers.push(...cityTransfers);
 
-    // Return: Airport → Home (only if last leg is a real flight)
-    if (!lastLegIsSkip) {
+    // Return: Airport → Home (only if last leg is a real flight; skip for one-way trips)
+    if (plan.tripMode === 'oneway') {
+      // No return transfer for one-way trips — add no-op placeholder for consistent indexing
+      transfers.push({ from: '', to: '', type: 'none', distanceKm: 0, durationText: '0 min', taxiCost: 0, publicTransportCost: 0, transitRoutes: [] });
+    } else if (!lastLegIsSkip) {
       transfers.push(await liveTransfer(
         originAirportName || 'Airport', homeName,
         'airport-to-home',
@@ -1195,11 +1378,17 @@ const Results = {
   },
 
   renderTimeline() {
+    // If itinerary grid is active, re-render that instead of the legacy timeline
+    if (this.plan?.itinerary && this.plan.itinerary.length > 0) {
+      Itinerary.render(this.plan);
+      return;
+    }
+
     const container = document.getElementById('results-timeline');
 
     // Save expanded card state before re-render
     const expandedCards = new Set();
-    container.querySelectorAll('.card-header.expanded').forEach(h => {
+    container.querySelectorAll('.card-header.expanded, .city-card-header.expanded, .route-card-grid.expanded').forEach(h => {
       const card = h.closest('.timeline-card');
       if (card) expandedCards.add(`${card.dataset.type}-${card.dataset.index}`);
     });
@@ -1271,14 +1460,14 @@ const Results = {
         passCard.dataset.index = i;
         passCard.innerHTML = `
           <div class="card-header">
-            <div class="card-icon">&#128205;</div>
+            <div class="card-icon"><span class="material-symbols-outlined">location_on</span></div>
             <div class="card-title">
               <h4>${Utils.escapeHtml(plan.cities[i].name)}</h4>
               <span class="card-subtitle">Passing through &middot; no overnight stay</span>
             </div>
             <button class="nights-edit-btn" onclick="event.stopPropagation(); Results.onNightsChange(${i})" style="margin-left:auto">
               <span class="nights-edit-value">0</span> nights
-              <span class="nights-edit-icon">&#9998;</span>
+              <span class="nights-edit-icon"><span class="material-symbols-outlined" style="font-size:16px">edit</span></span>
             </button>
           </div>
         `;
@@ -1327,7 +1516,7 @@ const Results = {
       const [type, index] = key.split('-');
       const card = container.querySelector(`.timeline-card[data-type="${type}"][data-index="${index}"]`);
       if (card) {
-        const header = card.querySelector('.card-header');
+        const header = card.querySelector('.card-header, .city-card-header, .route-card-grid');
         const body = card.querySelector('.card-body');
         if (header && body) {
           header.classList.add('expanded');
@@ -1772,6 +1961,7 @@ const Results = {
         const allFlights = (data.flights || []).sort((a, b) => a.price - b.price);
         leg.offers = allFlights;
         leg.selectedOffer = allFlights[0] || null;
+        Components._updateLegAirportNames(leg);
       } catch (e) {
         console.warn(`Failed to fetch flights for leg ${li}:`, e);
       }
@@ -2103,6 +2293,7 @@ const Results = {
       const flights = result?.flights || [];
       leg.offers = flights;
       leg.selectedOffer = flights[0] || null;
+      Components._updateLegAirportNames(leg);
     } catch (e) {
       console.warn('Flight re-fetch failed:', e);
     }
@@ -2143,7 +2334,7 @@ const Results = {
     if (breakdownEl) {
       let html = `
         <div class="cost-line">
-          <span class="cost-line-label"><span class="icon">&#9992;&#65039;</span> Transport (${this.plan.flightLegs.filter(l => l.legType === 'flight' || l.legType === 'train').length} legs)</span>
+          <span class="cost-line-label"><span class="material-symbols-outlined icon">flight</span> Transport (${this.plan.flightLegs.filter(l => l.legType === 'flight' || l.legType === 'train').length} legs)</span>
           <span class="cost-line-value">${Utils.formatCurrencyRange(costs.flights.low, costs.flights.high, 'EUR')}</span>
         </div>
       `;
@@ -2151,7 +2342,7 @@ const Results = {
       if (costs.layoverMeals.low > 0 || costs.layoverMeals.high > 0) {
         html += `
           <div class="cost-line">
-            <span class="cost-line-label"><span class="icon">&#9749;</span> Layover Meals</span>
+            <span class="cost-line-label"><span class="material-symbols-outlined icon">coffee</span> Layover Meals</span>
             <span class="cost-line-value">${Utils.formatCurrencyRange(costs.layoverMeals.low, costs.layoverMeals.high, 'EUR')}</span>
           </div>
         `;
@@ -2159,7 +2350,7 @@ const Results = {
 
       html += `
         <div class="cost-line">
-          <span class="cost-line-label"><span class="icon">&#127976;</span> Hotels (${this.plan.cities.reduce((s, c) => s + c.nights, 0)} nights)</span>
+          <span class="cost-line-label"><span class="material-symbols-outlined icon">hotel</span> Hotels (${this.plan.cities.reduce((s, c) => s + c.nights, 0)} nights)</span>
           <span class="cost-line-value">${Utils.formatCurrencyRange(costs.hotels.low, costs.hotels.high, 'EUR')}</span>
         </div>
       `;
@@ -2167,7 +2358,7 @@ const Results = {
       if (costs.dailyMeals.low > 0 || costs.dailyMeals.high > 0) {
         html += `
           <div class="cost-line">
-            <span class="cost-line-label"><span class="icon">&#127860;</span> Daily Meals</span>
+            <span class="cost-line-label"><span class="material-symbols-outlined icon">restaurant</span> Daily Meals</span>
             <span class="cost-line-value">${Utils.formatCurrencyRange(costs.dailyMeals.low, costs.dailyMeals.high, 'EUR')}</span>
           </div>
         `;
@@ -2175,10 +2366,19 @@ const Results = {
 
       html += `
         <div class="cost-line">
-          <span class="cost-line-label"><span class="icon">&#128661;</span> Transfers</span>
+          <span class="cost-line-label"><span class="material-symbols-outlined icon">local_taxi</span> Transfers</span>
           <span class="cost-line-value">${Utils.formatCurrencyRange(costs.transfers.low, costs.transfers.high, 'EUR')}</span>
         </div>
       `;
+
+      if (costs.activities && (costs.activities.low > 0 || costs.activities.high > 0)) {
+        html += `
+          <div class="cost-line">
+            <span class="cost-line-label"><span class="material-symbols-outlined icon">confirmation_number</span> Activities</span>
+            <span class="cost-line-value">${Utils.formatCurrencyRange(costs.activities.low, costs.activities.high, 'EUR')}</span>
+          </div>
+        `;
+      }
 
       breakdownEl.innerHTML = html;
     }
@@ -2194,6 +2394,12 @@ const Results = {
       }
     } else {
       travelersEl.textContent = `${this.plan.adults} adult${this.plan.adults > 1 ? 's' : ''}${this.plan.children > 0 ? ` · ${this.plan.children} child${this.plan.children > 1 ? 'ren' : ''}` : ''}${this.plan.infants > 0 ? ` · ${this.plan.infants} infant${this.plan.infants > 1 ? 's' : ''}` : ''} · ${CostEngine.calculateRooms(this.plan.adults)} room${CostEngine.calculateRooms(this.plan.adults) > 1 ? 's' : ''}`;
+    }
+
+    // Bottom cost bar (desktop + mobile)
+    const bottomAmount = document.getElementById('cost-bottom-amount');
+    if (bottomAmount) {
+      bottomAmount.innerHTML = Utils.formatCurrencyRange(costs.total.low, costs.total.high, 'EUR');
     }
 
     // Mobile bottom sheet

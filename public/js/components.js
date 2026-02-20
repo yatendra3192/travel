@@ -52,14 +52,23 @@ const Components = {
     card.dataset.type = 'transfer';
     card.dataset.index = index;
 
-    const icon = transfer.type === 'home-to-airport' || transfer.type === 'airport-to-home'
-      ? '&#128663;' : '&#128652;';
-
     // Set default selectedMode if not already set
     if (!transfer.selectedMode) {
       transfer.selectedMode = 'transit';
     }
     const sel = transfer.selectedMode;
+
+    // Determine via icon and label based on selected mode
+    const modeIcons = { taxi: 'local_taxi', transit: 'directions_transit', bike: 'pedal_bike', walk: 'directions_walk' };
+    const modeLabels = { taxi: 'TAXI', transit: 'TRANSIT', bike: 'BIKE', walk: 'WALK' };
+    const viaIcon = modeIcons[sel] || 'local_taxi';
+    const viaLabel = modeLabels[sel] || 'TRANSFER';
+
+    // Abbreviated from/to codes
+    const fromCode = this._transferCode(transfer, 'from');
+    const toCode = this._transferCode(transfer, 'to');
+    const fromCity = Utils.escapeHtml(transfer.from || '');
+    const toCity = Utils.escapeHtml(transfer.to || '');
 
     // Build transit routes detail HTML
     const routes = transfer.transitRoutes || [];
@@ -84,7 +93,6 @@ const Components = {
           }
           if (step.mode === 'TRANSIT') {
             const vType = { BUS: 'Bus', HEAVY_RAIL: 'Train', SUBWAY: 'Metro', COMMUTER_TRAIN: 'Train', TRAM: 'Tram', LIGHT_RAIL: 'Light Rail', FERRY: 'Ferry' }[step.vehicleType] || 'Transit';
-            const vIcon = { BUS: '&#128653;', HEAVY_RAIL: '&#128646;', SUBWAY: '&#x24C2;', COMMUTER_TRAIN: '&#128646;', TRAM: '&#128651;', FERRY: '&#x26F4;' }[step.vehicleType] || '&#128652;';
             return `
               <div class="route-step transit-step">
                 <div class="step-icon-col">
@@ -117,7 +125,7 @@ const Components = {
                 <span class="route-cost">${Utils.formatCurrency(route.publicTransportCost, 'EUR')} ${fareBadge}</span>
               </div>
             </div>
-            <div class="route-steps-timeline" style="display:${ri === 0 ? 'none' : 'none'}">
+            <div class="route-steps-timeline" style="display:none">
               ${stepsHtml}
             </div>
           </div>`;
@@ -130,36 +138,43 @@ const Components = {
     // Compute header cost based on selected mode
     const headerCost = this._getTransferModeCost(transfer);
 
-    // Schedule times with dates
-    const schedStart = Utils.formatDateTimeFromDate(transfer.scheduleStart);
-    const schedEnd = Utils.formatDateTimeFromDate(transfer.scheduleEnd);
-    const schedHtml = (schedStart && schedEnd)
-      ? `<span class="card-schedule">${schedStart} &rarr; ${schedEnd}</span>` : '';
-
     // Google Maps directions link
     const mapsUrl = (transfer.originLat && transfer.destLat)
       ? `https://www.google.com/maps/dir/${encodeURIComponent(transfer.from)}/@${transfer.originLat},${transfer.originLng}/${encodeURIComponent(transfer.to)}/@${transfer.destLat},${transfer.destLng}`
       : null;
     const mapsLinkHtml = mapsUrl
-      ? `<a class="transfer-maps-link" href="${Utils.escapeHtml(mapsUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open in Google Maps">&#x1F5FA;</a>`
+      ? `<a class="transfer-maps-link" href="${Utils.escapeHtml(mapsUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Open in Google Maps"><span class="material-symbols-outlined" style="font-size:16px">map</span></a>`
       : '';
 
     card.innerHTML = `
-      <div class="card-header" aria-expanded="false" onclick="Components.toggleCard(this)">
-        <div class="card-icon">${icon}</div>
-        <div class="card-title">
-          <h4>${Utils.escapeHtml(transfer.from)} &rarr; ${Utils.escapeHtml(transfer.to)} ${mapsLinkHtml}</h4>
-          <span class="card-subtitle">${transfer.durationText || 'Transfer'}${transfer.distanceKm ? ' &middot; ~' + Math.round(transfer.distanceKm) + ' km' : ''}</span>
-          ${schedHtml}
+      <div class="route-card-grid" onclick="Components.toggleCard(this)">
+        <div class="route-card-from">
+          <span class="route-card-code transfer-code">${fromCode}</span>
+          <span class="route-card-city">${fromCity}</span>
         </div>
-        <div class="card-cost" id="transfer-cost-${index}">${Utils.formatCurrency(headerCost, 'EUR')}</div>
-        <span class="expand-arrow">&#9660;</span>
+        <div class="route-card-via">
+          <div class="route-card-via-line"></div>
+          <div class="route-card-via-icon transfer-via"><span class="material-symbols-outlined">${viaIcon}</span></div>
+          <span class="route-card-via-label">${viaLabel}</span>
+        </div>
+        <div class="route-card-to">
+          <span class="route-card-code transfer-code">${toCode}</span>
+          <span class="route-card-city">${toCity}</span>
+        </div>
+      </div>
+      <div class="route-card-footer">
+        <div class="route-card-footer-left">
+          <span class="material-symbols-outlined footer-icon">schedule</span>
+          <span>${transfer.durationText || 'Transfer'}${transfer.distanceKm ? ' &middot; ~' + Math.round(transfer.distanceKm) + ' km' : ''}</span>
+          ${mapsLinkHtml}
+        </div>
+        <span class="card-cost" id="transfer-cost-${index}">${Utils.formatCurrency(headerCost, 'EUR')}</span>
       </div>
       <div class="card-body">
         <div class="transfer-mode-section${sel === 'taxi' ? ' selected' : ''}" data-mode="taxi" onclick="Components.selectTransferMode(${index}, 'taxi')">
           <div class="transfer-mode-header">
             <span class="transfer-mode-check">${sel === 'taxi' ? '&#9679;' : '&#9675;'}</span>
-            &#128661; <strong>Taxi / Cab</strong>
+            <span class="material-symbols-outlined" style="font-size:18px">local_taxi</span> <strong>Taxi / Cab</strong>
             <span class="transfer-mode-cost">${Utils.formatCurrency(transfer.taxiCost, 'EUR')}</span>
           </div>
           <div class="transfer-mode-meta">
@@ -170,7 +185,7 @@ const Components = {
         <div class="transfer-mode-section${sel === 'transit' ? ' selected' : ''}" data-mode="transit" onclick="Components.selectTransferMode(${index}, 'transit')">
           <div class="transfer-mode-header">
             <span class="transfer-mode-check">${sel === 'transit' ? '&#9679;' : '&#9675;'}</span>
-            &#128646; <strong>Public Transport</strong>
+            <span class="material-symbols-outlined" style="font-size:18px">directions_transit</span> <strong>Public Transport</strong>
             <span class="transfer-mode-cost">${Utils.formatCurrency(transfer.publicTransportCost, 'EUR')}</span>
           </div>
           ${transitDetailHtml
@@ -182,7 +197,7 @@ const Components = {
         ${bike ? `<div class="transfer-mode-section${sel === 'bike' ? ' selected' : ''}" data-mode="bike" onclick="Components.selectTransferMode(${index}, 'bike')">
           <div class="transfer-mode-header">
             <span class="transfer-mode-check">${sel === 'bike' ? '&#9679;' : '&#9675;'}</span>
-            &#128690; <strong>Bicycle</strong>
+            <span class="material-symbols-outlined" style="font-size:18px">pedal_bike</span> <strong>Bicycle</strong>
             <span class="transfer-mode-cost">Free</span>
           </div>
           <div class="transfer-mode-meta">${bike.duration} &middot; ${bike.distanceText || bike.distanceKm + ' km'}${bike.summary ? ' via ' + bike.summary : ''}</div>
@@ -191,7 +206,7 @@ const Components = {
         ${walk ? `<div class="transfer-mode-section${sel === 'walk' ? ' selected' : ''}" data-mode="walk" onclick="Components.selectTransferMode(${index}, 'walk')">
           <div class="transfer-mode-header">
             <span class="transfer-mode-check">${sel === 'walk' ? '&#9679;' : '&#9675;'}</span>
-            &#128694; <strong>Walking</strong>
+            <span class="material-symbols-outlined" style="font-size:18px">directions_walk</span> <strong>Walking</strong>
             <span class="transfer-mode-cost">Free</span>
           </div>
           <div class="transfer-mode-meta">${walk.duration} &middot; ${walk.distanceText || walk.distanceKm + ' km'}</div>
@@ -199,6 +214,23 @@ const Components = {
       </div>
     `;
     return card;
+  },
+
+  _transferCode(transfer, side) {
+    const type = transfer.type || '';
+    if (side === 'from') {
+      if (type === 'home-to-airport') return 'HOME';
+      if (type === 'airport-to-hotel' || type === 'airport-to-city') return transfer.fromIata || 'APT';
+      if (type === 'hotel-to-airport' || type === 'city-to-airport') return 'HTL';
+      if (type === 'direct-drive') return 'CTY';
+      return (transfer.from || '').substring(0, 4).toUpperCase();
+    }
+    if (type === 'airport-to-home') return 'HOME';
+    if (type === 'home-to-airport') return transfer.toIata || 'APT';
+    if (type === 'airport-to-hotel' || type === 'airport-to-city') return 'HTL';
+    if (type === 'hotel-to-airport' || type === 'city-to-airport') return transfer.toIata || 'APT';
+    if (type === 'direct-drive') return 'CTY';
+    return (transfer.to || '').substring(0, 4).toUpperCase();
   },
 
   _getTransferModeCost(transfer) {
@@ -233,6 +265,13 @@ const Components = {
         const cost = this._getTransferModeCost(transfer);
         costEl.textContent = Utils.formatCurrency(cost, 'EUR');
       }
+      // Update grid header via icon and label
+      const modeIcons = { taxi: 'local_taxi', transit: 'directions_transit', bike: 'pedal_bike', walk: 'directions_walk' };
+      const modeLabels = { taxi: 'TAXI', transit: 'TRANSIT', bike: 'BIKE', walk: 'WALK' };
+      const viaIconEl = card.querySelector('.route-card-via-icon .material-symbols-outlined');
+      if (viaIconEl) viaIconEl.textContent = modeIcons[mode] || 'local_taxi';
+      const viaLabelEl = card.querySelector('.route-card-via-label');
+      if (viaLabelEl) viaLabelEl.textContent = modeLabels[mode] || 'TRANSFER';
     }
 
     // Recalculate cost sidebar
@@ -267,25 +306,24 @@ const Components = {
     const mode = leg.selectedMode || 'flight';
     const gr = leg.groundRoutes;
     const pills = [];
-    // Flight is always available if there are offers
     if (leg.offers && leg.offers.length > 0) {
-      pills.push({ key: 'flight', icon: '&#9992;&#65039;', tip: 'Flight' });
+      pills.push({ key: 'flight', icon: 'flight', tip: 'Flight' });
     }
     if (gr.transitRoutes && gr.transitRoutes.length > 0) {
-      pills.push({ key: 'transit', icon: '&#128646;', tip: 'Train / Transit' });
+      pills.push({ key: 'transit', icon: 'directions_transit', tip: 'Train / Transit' });
     }
     if (gr.driving) {
-      pills.push({ key: 'drive', icon: '&#128663;', tip: 'Drive' });
+      pills.push({ key: 'drive', icon: 'directions_car', tip: 'Drive' });
     }
-    if (gr.walking && gr.walking.durationSec < 36000) { // only if < 10h
-      pills.push({ key: 'walk', icon: '&#128694;', tip: 'Walk' });
+    if (gr.walking && gr.walking.durationSec < 36000) {
+      pills.push({ key: 'walk', icon: 'directions_walk', tip: 'Walk' });
     }
     if (gr.bicycling && gr.bicycling.durationSec < 36000) {
-      pills.push({ key: 'bike', icon: '&#128690;', tip: 'Bike' });
+      pills.push({ key: 'bike', icon: 'pedal_bike', tip: 'Bike' });
     }
-    if (pills.length <= 1) return ''; // no toggle needed
+    if (pills.length <= 1) return '';
     return `<div class="transport-mode-toggle">${pills.map(p =>
-      `<button class="mode-pill${p.key === mode ? ' active' : ''}" title="${p.tip}" onclick="event.stopPropagation(); Components.selectTransportMode(${legIndex}, '${p.key}')">${p.icon}</button>`
+      `<button class="mode-pill${p.key === mode ? ' active' : ''}" title="${p.tip}" onclick="event.stopPropagation(); Components.selectTransportMode(${legIndex}, '${p.key}')"><span class="material-symbols-outlined">${p.icon}</span></button>`
     ).join('')}</div>`;
   },
 
@@ -325,7 +363,7 @@ const Components = {
     return `
       <div class="flight-option${isSelected ? ' selected' : ''}" onclick="Components.selectTransitOption(${legIndex}, ${routeIndex})" data-route-idx="${routeIndex}">
         <div class="flight-option-airline">
-          <div class="airline-logo" style="background:var(--color-primary)">&#128646;</div>
+          <div class="airline-logo" style="background:var(--color-primary)"><span class="material-symbols-outlined" style="font-size:16px;color:#fff">directions_transit</span></div>
           <span class="airline-name">Transit</span>
         </div>
         <div class="flight-option-route">
@@ -400,7 +438,7 @@ const Components = {
         const moreRows = remaining.map((r, ri) => this._buildTransitOptionRow(r, legIndex, ri + 1, false)).join('');
         moreHtml = `
           <div class="flight-more-toggle" onclick="Components.toggleMoreOptions(this)">
-            &#9662; ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
+            <span class="material-symbols-outlined" style="font-size:16px">expand_more</span> ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
           </div>
           <div class="flight-more-list">${moreRows}</div>
         `;
@@ -415,7 +453,7 @@ const Components = {
       const d = gr.driving;
       return `<div class="ground-route-body">
         <div class="ground-route-summary">
-          <div class="ground-route-icon">&#128663;</div>
+          <div class="ground-route-icon"><span class="material-symbols-outlined">directions_car</span></div>
           <div class="ground-route-info">
             <div class="route-label">Drive${d.summary ? ' via ' + d.summary : ''}</div>
             <div class="route-meta">${d.duration} &middot; ~${Math.round(d.distanceKm)} km</div>
@@ -431,7 +469,7 @@ const Components = {
       const w = gr.walking;
       return `<div class="ground-route-body">
         <div class="ground-route-summary">
-          <div class="ground-route-icon">&#128694;</div>
+          <div class="ground-route-icon"><span class="material-symbols-outlined">directions_walk</span></div>
           <div class="ground-route-info">
             <div class="route-label">Walk</div>
             <div class="route-meta">${w.duration} &middot; ${w.distanceText || (Math.round(w.distanceKm) + ' km')}</div>
@@ -444,7 +482,7 @@ const Components = {
       const b = gr.bicycling;
       return `<div class="ground-route-body">
         <div class="ground-route-summary">
-          <div class="ground-route-icon">&#128690;</div>
+          <div class="ground-route-icon"><span class="material-symbols-outlined">pedal_bike</span></div>
           <div class="ground-route-info">
             <div class="route-label">Bicycle</div>
             <div class="route-meta">${b.duration} &middot; ${b.distanceText || (Math.round(b.distanceKm) + ' km')}</div>
@@ -476,93 +514,132 @@ const Components = {
     const modePillsHtml = this._buildModePills(leg, index);
     const currentMode = leg.selectedMode || 'flight';
 
-    // Non-flight mode: render ground transport body
+    // Non-flight mode: render ground transport with grid layout
     if (currentMode !== 'flight' && leg.groundRoutes) {
       const groundBodyHtml = this._buildGroundRouteBody(leg, index);
-      // Schedule times
-      const schedStart = Utils.formatDateTimeFromDate(leg.scheduleStart);
-      const schedEnd = Utils.formatDateTimeFromDate(leg.scheduleEnd);
-      const schedHtml = (schedStart && schedEnd)
-        ? `<span class="card-schedule">${schedStart} &rarr; ${schedEnd}</span>` : '';
-
-      const modeIcons = { transit: '&#128646;', drive: '&#128663;', walk: '&#128694;', bike: '&#128690;' };
-      const fromLabel = leg.fromCityName || leg.fromName || leg.from;
-      const toLabel = leg.toCityName || leg.toName || leg.to;
+      const modeIconMap = { transit: 'directions_transit', drive: 'directions_car', walk: 'directions_walk', bike: 'pedal_bike' };
+      const modeLabelMap = { transit: 'TRANSIT', drive: 'DRIVE', walk: 'WALK', bike: 'BIKE' };
+      const fromCode = leg.from || '';
+      const toCode = leg.to || '';
+      const fromCity = leg.fromCityName || leg.fromName || leg.from;
+      const toCity = leg.toCityName || leg.toName || leg.to;
 
       card.innerHTML = `
-        <div class="flight-card-header">
-          <span class="card-icon">${modeIcons[currentMode] || '&#128646;'}</span>
-          <div class="card-title">
-            <h4>${fromLabel} &rarr; ${toLabel}</h4>
-            ${schedHtml}
+        <div class="route-card-grid">
+          <div class="route-card-from">
+            <span class="route-card-code">${Utils.escapeHtml(fromCode)}</span>
+            <span class="route-card-city">${Utils.escapeHtml(fromCity)}</span>
           </div>
-          ${modePillsHtml}
-          <span class="flight-date">${Utils.formatDate(leg.date)}</span>
+          <div class="route-card-via">
+            <div class="route-card-via-line"></div>
+            <div class="route-card-via-icon"><span class="material-symbols-outlined">${modeIconMap[currentMode] || 'directions_transit'}</span></div>
+            <span class="route-card-via-label">${modeLabelMap[currentMode] || 'GROUND'}</span>
+          </div>
+          <div class="route-card-to">
+            <span class="route-card-code">${Utils.escapeHtml(toCode)}</span>
+            <span class="route-card-city">${Utils.escapeHtml(toCity)}</span>
+          </div>
         </div>
+        <div class="route-card-footer">
+          <div class="route-card-footer-left">
+            <span class="material-symbols-outlined footer-icon">calendar_today</span>
+            <span>${Utils.formatDate(leg.date)}</span>
+          </div>
+        </div>
+        ${modePillsHtml}
         ${groundBodyHtml}
       `;
       return card;
     }
 
-    // Flight mode (existing behavior)
+    // Flight mode - no flights found
     if (!leg.offers || leg.offers.length === 0) {
+      const fromCode = leg.from || '';
+      const toCode = leg.to || '';
       card.innerHTML = `
-        <div class="flight-card-header">
-          <span class="card-icon">&#9992;&#65039;</span>
-          <h4>${leg.fromName || leg.from} &rarr; ${leg.toName || leg.to}</h4>
-          ${modePillsHtml}
-          <span class="flight-date">No flights found for ${Utils.formatDateShort(leg.date)}</span>
+        <div class="route-card-grid">
+          <div class="route-card-from">
+            <span class="route-card-code">${Utils.escapeHtml(fromCode)}</span>
+            <span class="route-card-city">${Utils.escapeHtml(leg.fromName || leg.from)}</span>
+          </div>
+          <div class="route-card-via">
+            <div class="route-card-via-line"></div>
+            <div class="route-card-via-icon"><span class="material-symbols-outlined">flight</span></div>
+            <span class="route-card-via-label">NO FLIGHTS</span>
+          </div>
+          <div class="route-card-to">
+            <span class="route-card-code">${Utils.escapeHtml(toCode)}</span>
+            <span class="route-card-city">${Utils.escapeHtml(leg.toName || leg.to)}</span>
+          </div>
         </div>
+        <div class="route-card-footer">
+          <div class="route-card-footer-left">
+            <span class="material-symbols-outlined footer-icon">event_busy</span>
+            <span>No flights for ${Utils.formatDateShort(leg.date)}</span>
+          </div>
+        </div>
+        ${modePillsHtml}
       `;
       return card;
     }
 
+    // Flight mode - with offers
     const selectedIdx = leg.offers.indexOf(leg.selectedOffer);
     const selectedOfferIdx = selectedIdx >= 0 ? selectedIdx : 0;
+    const selOffer = leg.selectedOffer || leg.offers[0];
     const topOffers = leg.offers.slice(0, 1);
     const remaining = leg.offers.slice(1);
 
-    // Build top 1 option row (always visible)
     const optionsHtml = topOffers.map((offer, oi) => this._buildFlightOptionRow(offer, index, oi, oi === selectedOfferIdx)).join('');
 
-    // Build remaining offers rows
     let moreHtml = '';
     if (remaining.length > 0) {
       const moreRows = remaining.map((offer, oi) => this._buildFlightOptionRow(offer, index, oi + 1, (oi + 1) === selectedOfferIdx)).join('');
       moreHtml = `
         <div class="flight-more-toggle" onclick="Components.toggleMoreOptions(this)">
-          &#9662; ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
+          <span class="material-symbols-outlined" style="font-size:16px">expand_more</span> ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
         </div>
         <div class="flight-more-list">${moreRows}</div>
       `;
     }
 
-    // Layover meals for selected offer
-    const selOffer = leg.selectedOffer || leg.offers[0];
     const layoverHtml = this._buildLayoverMealsHtml(selOffer);
 
-    // Flight time summary with dates
-    const flightDepDt = selOffer?.departure ? new Date(selOffer.departure) : null;
-    const flightArrDt = selOffer?.arrival ? new Date(selOffer.arrival) : null;
-    const flightDepStr = flightDepDt ? Utils.formatDateTimeFromDate(flightDepDt) : '';
-    const flightArrStr = flightArrDt ? Utils.formatDateTimeFromDate(flightArrDt) : '';
-    const flightSchedHtml = (flightDepStr && flightArrStr)
-      ? `<span class="card-schedule">${flightDepStr} &rarr; ${flightArrStr}</span>` : '';
+    // Airline info for via label
+    const airlineCode = selOffer.airline || '';
+    const flightNum = selOffer.flightNumber || airlineCode;
+    const viaLabel = flightNum || 'FLIGHT';
+    const stopsText = selOffer.stops === 0 ? 'Direct' : `${selOffer.stops} stop${selOffer.stops > 1 ? 's' : ''}`;
+    const durationText = Utils.formatDuration(selOffer.duration);
+
+    // From/to airport codes
+    const fromCode = selOffer.segments?.[0]?.from || leg.from || '';
+    const toCode = selOffer.segments?.[selOffer.segments.length - 1]?.to || leg.to || '';
 
     card.innerHTML = `
-      <div class="flight-card-header">
-        <span class="card-icon">&#9992;&#65039;</span>
-        <div class="card-title">
-          <h4>
-            <span class="airport-select" onclick="event.stopPropagation(); Results.showAirportPicker(${index}, 'from')" title="Change departure airport">${leg.fromName || leg.from} <span class="airport-edit-icon">&#9998;</span></span>
-            &rarr;
-            <span class="airport-select" onclick="event.stopPropagation(); Results.showAirportPicker(${index}, 'to')" title="Change arrival airport">${leg.toName || leg.to} <span class="airport-edit-icon">&#9998;</span></span>
-          </h4>
-          ${flightSchedHtml}
+      <div class="route-card-grid">
+        <div class="route-card-from">
+          <span class="route-card-code airport-select" onclick="event.stopPropagation(); Results.showAirportPicker(${index}, 'from')" title="Change departure airport">${Utils.escapeHtml(fromCode)}</span>
+          <span class="route-card-city">${Utils.escapeHtml(leg.fromCityName || leg.fromName || leg.from)}</span>
         </div>
-        ${modePillsHtml}
-        <span class="flight-date">${Utils.formatDate(leg.date)}</span>
+        <div class="route-card-via">
+          <div class="route-card-via-line"></div>
+          <div class="route-card-via-icon"><span class="material-symbols-outlined">flight</span></div>
+          <span class="route-card-via-label">${Utils.escapeHtml(viaLabel)}</span>
+        </div>
+        <div class="route-card-to">
+          <span class="route-card-code airport-select" onclick="event.stopPropagation(); Results.showAirportPicker(${index}, 'to')" title="Change arrival airport">${Utils.escapeHtml(toCode)}</span>
+          <span class="route-card-city">${Utils.escapeHtml(leg.toCityName || leg.toName || leg.to)}</span>
+        </div>
       </div>
+      <div class="route-card-footer">
+        <div class="route-card-footer-left">
+          <span class="material-symbols-outlined footer-icon">schedule</span>
+          <span>${durationText} &middot; ${stopsText}</span>
+        </div>
+        <span class="card-cost">${Utils.formatCurrency(selOffer.price, selOffer.currency || 'EUR')}</span>
+      </div>
+      ${modePillsHtml}
       <div class="flight-options">${optionsHtml}</div>
       ${moreHtml}
       <div class="flight-layover-area">${layoverHtml}</div>
@@ -591,8 +668,10 @@ const Components = {
     return `
       <div class="flight-option${isSelected ? ' selected' : ''}" onclick="Components.selectFlightOption(${legIndex}, ${offerIndex})" data-offer-idx="${offerIndex}">
         <div class="flight-option-airline">
-          <div class="airline-logo" style="background:${color}">${airlineCode.slice(0, 2)}</div>
-          <span class="airline-name">${airlineName}</span>
+          ${offer.airlineLogo
+            ? `<img class="airline-logo-img" src="${Utils.escapeHtml(offer.airlineLogo)}" alt="${Utils.escapeHtml(airlineCode)}" onerror="this.outerHTML='<div class=\\'airline-logo\\' style=\\'background:${color}\\'>${airlineCode.slice(0, 2)}</div>'">`
+            : `<div class="airline-logo" style="background:${color}">${airlineCode.slice(0, 2)}</div>`}
+          <span class="airline-name">${Utils.escapeHtml(airlineName)}</span>
         </div>
         <div class="flight-option-route">
           <div class="flight-option-times">
@@ -645,6 +724,9 @@ const Components = {
     const selected = leg.offers[offerIndex];
     leg.selectedOffer = selected;
 
+    // Update header airport names to match actual flight airports
+    this._updateLegAirportNames(leg);
+
     // Move selected offer to top of the list
     if (offerIndex !== 0) {
       leg.offers.splice(offerIndex, 1);
@@ -675,8 +757,19 @@ const Components = {
     const isVisible = list.classList.contains('expanded');
     list.classList.toggle('expanded');
     toggleEl.innerHTML = isVisible
-      ? `&#9662; ${list.children.length} more option${list.children.length > 1 ? 's' : ''}`
-      : `&#9652; hide options`;
+      ? `<span class="material-symbols-outlined" style="font-size:16px">expand_more</span> ${list.children.length} more option${list.children.length > 1 ? 's' : ''}`
+      : `<span class="material-symbols-outlined" style="font-size:16px">expand_less</span> hide options`;
+  },
+
+  // Update leg.fromName/toName based on selected offer's actual departure/arrival airports
+  _updateLegAirportNames(leg) {
+    if (!leg.selectedOffer || !leg.airportNames) return;
+    const segs = leg.selectedOffer.segments;
+    if (!segs || segs.length === 0) return;
+    const actualFrom = segs[0].from;
+    const actualTo = segs[segs.length - 1].to;
+    if (actualFrom && leg.airportNames[actualFrom]) leg.fromName = leg.airportNames[actualFrom];
+    if (actualTo && leg.airportNames[actualTo]) leg.toName = leg.airportNames[actualTo];
   },
 
   _buildHotelOptionRow(hotel, cityIndex, optionIndex, isSelected, city) {
@@ -684,10 +777,10 @@ const Components = {
     const roomText = hotel.roomType || '';
     const metaParts = [distanceText, roomText].filter(Boolean).join(' \u00b7 ');
 
-    // Photo: show image if available, fall back to emoji icon
+    // Photo: show image if available, fall back to icon
     const photoHtml = hotel.photoUrl
-      ? `<img class="hotel-option-photo" src="${Utils.escapeHtml(hotel.photoUrl)}" alt="${Utils.escapeHtml(hotel.name || 'Hotel')}" loading="lazy" onerror="this.outerHTML='<div class=\\'hotel-option-icon\\'>&#127976;</div>'">`
-      : '<div class="hotel-option-icon">&#127976;</div>';
+      ? `<img class="hotel-option-photo" src="${Utils.escapeHtml(hotel.photoUrl)}" alt="${Utils.escapeHtml(hotel.name || 'Hotel')}" loading="lazy" onerror="this.outerHTML='<div class=\\'hotel-option-icon\\'><span class=\\'material-symbols-outlined\\'>hotel</span></div>'">`
+      : '<div class="hotel-option-icon"><span class="material-symbols-outlined">hotel</span></div>';
 
     // Rating badge
     let ratingHtml = '';
@@ -701,7 +794,7 @@ const Components = {
 
     // Listing link (Booking.com)
     const linkHtml = hotel.listingUrl
-      ? `<a class="hotel-option-link" href="${Utils.escapeHtml(hotel.listingUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Booking.com">&#8599;</a>`
+      ? `<a class="hotel-option-link" href="${Utils.escapeHtml(hotel.listingUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Booking.com"><span class="material-symbols-outlined" style="font-size:14px">open_in_new</span></a>`
       : '';
 
     // Google Maps link: city center → hotel
@@ -710,7 +803,7 @@ const Components = {
       const origin = `${city.lat},${city.lng}`;
       const dest = encodeURIComponent(`${hotel.name}, ${city.name || ''}`);
       const mapsUrl = `https://www.google.com/maps/dir/${origin}/${dest}`;
-      mapsHtml = `<a class="hotel-option-link" href="${mapsUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Google Maps">&#128506;</a>`;
+      mapsHtml = `<a class="hotel-option-link" href="${mapsUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Google Maps"><span class="material-symbols-outlined" style="font-size:14px">map</span></a>`;
     }
 
     return `
@@ -735,8 +828,10 @@ const Components = {
     card.dataset.index = index;
 
     const nightlyRate = city.hotelBasePrice || CostEngine.getHotelBasePrice(city.cityCode);
-    const rooms = CostEngine.calculateRooms(city.adults || 2);
     const isLive = city.hotelPriceSource === 'live';
+    // Live SerpApi prices already account for group size (searched with actual adults),
+    // so don't multiply by rooms. Only multiply for fallback estimates.
+    const rooms = isLive ? 1 : CostEngine.calculateRooms(city.adults || 2);
 
     // Build meal breakdown HTML
     let mealHtml = '';
@@ -755,7 +850,7 @@ const Components = {
       mealHtml = `
         <div class="meal-costs-section">
           <div class="meal-section-header">
-            &#127860; <strong>Daily Meals</strong>
+            <span class="material-symbols-outlined" style="font-size:18px">restaurant</span> <strong>Daily Meals</strong>
             <span class="confidence-badge ${levelClass}">${levelLabel}</span>
           </div>
           <div class="meal-breakdown" id="meal-breakdown-${index}">
@@ -815,16 +910,16 @@ const Components = {
     if (ciDateStr) {
       datesHtml = `<div class="city-dates">
         <div class="city-dates-row">
-          <span>&#128273; Hotel check-in</span>
+          <span><span class="material-symbols-outlined" style="font-size:16px;vertical-align:text-bottom">key</span> Hotel check-in</span>
           <strong>${ciDateStr}, ${hotelCiTime || '3:00 PM'}</strong>
         </div>
         <div class="city-dates-row">
-          <span>&#128337; Arrives at hotel</span>
+          <span><span class="material-symbols-outlined" style="font-size:16px;vertical-align:text-bottom">schedule</span> Arrives at hotel</span>
           <strong>${ciDateStr}${travArrival ? ', ' + travArrival : ''}</strong>
           ${arrivalNote}
         </div>
         <div class="city-dates-row">
-          <span>&#128682; Hotel check-out</span>
+          <span><span class="material-symbols-outlined" style="font-size:16px;vertical-align:text-bottom">logout</span> Hotel check-out</span>
           <strong>${coDateStr}${hotelCoTime ? ', ' + hotelCoTime : ''}</strong>
         </div>
       </div>`;
@@ -852,7 +947,7 @@ const Components = {
           }).join('');
           moreHtml = `
             <div class="hotel-more-toggle" onclick="Components.toggleMoreOptions(this)">
-              &#9662; ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
+              <span class="material-symbols-outlined" style="font-size:16px">expand_more</span> ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
             </div>
             <div class="hotel-more-list">${moreRows}</div>
           `;
@@ -881,16 +976,16 @@ const Components = {
     // Selected hotel info for header
     const sel = city.selectedHotel || {};
     const headerPhotoHtml = sel.photoUrl
-      ? `<img class="city-header-photo" src="${Utils.escapeHtml(sel.photoUrl)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'card-icon\\'>&#127976;</div>'">`
-      : '<div class="card-icon">&#127976;</div>';
+      ? `<img class="city-header-photo" src="${Utils.escapeHtml(sel.photoUrl)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'card-icon\\'><span class=\\'material-symbols-outlined\\'>hotel</span></div>'">`
+      : '<div class="card-icon"><span class="material-symbols-outlined">hotel</span></div>';
     const headerLinkHtml = sel.listingUrl
-      ? `<a class="hotel-option-link" href="${Utils.escapeHtml(sel.listingUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Booking.com">&#8599;</a>`
+      ? `<a class="hotel-option-link" href="${Utils.escapeHtml(sel.listingUrl)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Booking.com"><span class="material-symbols-outlined" style="font-size:16px">open_in_new</span></a>`
       : '';
     let headerMapsHtml = '';
     if (city.lat && city.lng && sel.name) {
       const origin = `${city.lat},${city.lng}`;
       const dest = encodeURIComponent(`${sel.name}, ${city.name || ''}`);
-      headerMapsHtml = `<a class="hotel-option-link" href="https://www.google.com/maps/dir/${origin}/${dest}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Google Maps">&#128506;</a>`;
+      headerMapsHtml = `<a class="hotel-option-link" href="https://www.google.com/maps/dir/${origin}/${dest}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="View on Google Maps"><span class="material-symbols-outlined" style="font-size:16px">map</span></a>`;
     }
     let headerRatingHtml = '';
     if (sel.rating) {
@@ -900,15 +995,15 @@ const Components = {
     const headerMeta = [sel.distance ? `${sel.distance.toFixed(1)} km` : '', sel.roomType || ''].filter(Boolean).join(' \u00b7 ');
 
     card.innerHTML = `
-      <div class="card-header" aria-expanded="false" onclick="Components.toggleCard(this)">
+      <div class="city-card-header" onclick="Components.toggleCard(this)">
         ${headerPhotoHtml}
-        <div class="card-title">
+        <div class="city-card-info">
           <h4>${Utils.escapeHtml(hotelNameDisplay)} ${headerLinkHtml}${headerMapsHtml}</h4>
-          <span class="card-subtitle">${city.nights} night${city.nights !== 1 ? 's' : ''} stay &middot; ${Utils.formatCurrency(nightlyRate, 'EUR')}/night${headerRatingHtml ? ` &middot; <span class="hotel-option-rating">${headerRatingHtml}</span>` : ''}${headerMeta ? ` &middot; ${Utils.escapeHtml(headerMeta)}` : ''}</span>
-          ${schedHtml}
+          <span class="city-card-meta">${city.nights} night${city.nights !== 1 ? 's' : ''} &middot; ${Utils.formatCurrency(nightlyRate, 'EUR')}/night${headerRatingHtml ? ` &middot; <span class="hotel-option-rating">${headerRatingHtml}</span>` : ''}${headerMeta ? ` &middot; ${Utils.escapeHtml(headerMeta)}` : ''}</span>
+          <span class="city-card-schedule">${ciDateStr ? `Check-in ${ciDateStr}` : ''}</span>
         </div>
         <div class="card-cost" id="city-cost-${index}">${Utils.formatCurrency(nightlyRate * city.nights * rooms, 'EUR')}</div>
-        <span class="expand-arrow">&#9660;</span>
+        <span class="expand-arrow material-symbols-outlined">expand_more</span>
       </div>
       <div class="card-body">
         <div class="city-card-body">
@@ -917,8 +1012,16 @@ const Components = {
             <label>Nights</label>
             <button class="nights-edit-btn" onclick="event.stopPropagation(); Results.onNightsChange(${index})">
               <span class="nights-edit-value">${city.nights}</span> night${city.nights !== 1 ? 's' : ''}
-              <span class="nights-edit-icon">&#9998;</span>
+              <span class="nights-edit-icon"><span class="material-symbols-outlined" style="font-size:16px">edit</span></span>
             </button>
+          </div>
+          <div class="hotel-search-box">
+            <input type="text" class="hotel-search-input"
+              placeholder="Search hotel by name..."
+              data-city-index="${index}"
+              oninput="Results.onHotelSearchInput(this, ${index})"
+              autocomplete="off">
+            <div class="hotel-search-results" id="hotel-search-results-${index}"></div>
           </div>
           ${hotelOptionsHtml}
           ${mealHtml}
@@ -938,13 +1041,10 @@ const Components = {
     const transit = leg.transitInfo || {};
     const costPerPerson = transit.estimatedCostEur || 15;
     const routes = leg.trainRoutes?.transitRoutes || [];
+    const durationText = transit.duration || 'Varies';
+    const fromCode = leg.from || '';
+    const toCode = leg.to || '';
 
-    const trainStart = Utils.formatDateTimeFromDate(leg.scheduleStart);
-    const trainEnd = Utils.formatDateTimeFromDate(leg.scheduleEnd);
-    const trainSchedHtml = (trainStart && trainEnd)
-      ? `<span class="card-schedule">${trainStart} &rarr; ${trainEnd}</span>` : '';
-
-    // When we have Google Maps transit routes, show them like flight options
     if (routes.length > 0) {
       const topHtml = this._buildTransitOptionRow(routes[0], index, 0, true);
       let moreHtml = '';
@@ -953,40 +1053,63 @@ const Components = {
         const moreRows = remaining.map((r, ri) => this._buildTransitOptionRow(r, index, ri + 1, false)).join('');
         moreHtml = `
           <div class="flight-more-toggle" onclick="Components.toggleMoreOptions(this)">
-            &#9662; ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
+            <span class="material-symbols-outlined" style="font-size:16px">expand_more</span> ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
           </div>
           <div class="flight-more-list">${moreRows}</div>
         `;
       }
 
       card.innerHTML = `
-        <div class="flight-card-header">
-          <div class="card-icon">&#128646;</div>
-          <div class="card-title">
-            <h4>${leg.fromName || leg.from} &rarr; ${leg.toName}</h4>
-            <span class="card-subtitle">Train/Bus &middot; ${Utils.formatDateShort(leg.date)}</span>
-            ${trainSchedHtml}
+        <div class="route-card-grid">
+          <div class="route-card-from">
+            <span class="route-card-code">${Utils.escapeHtml(fromCode)}</span>
+            <span class="route-card-city">${Utils.escapeHtml(leg.fromName || leg.from)}</span>
           </div>
+          <div class="route-card-via">
+            <div class="route-card-via-line"></div>
+            <div class="route-card-via-icon"><span class="material-symbols-outlined">train</span></div>
+            <span class="route-card-via-label">TRAIN</span>
+          </div>
+          <div class="route-card-to">
+            <span class="route-card-code">${Utils.escapeHtml(toCode)}</span>
+            <span class="route-card-city">${Utils.escapeHtml(leg.toName || leg.to)}</span>
+          </div>
+        </div>
+        <div class="route-card-footer">
+          <div class="route-card-footer-left">
+            <span class="material-symbols-outlined footer-icon">schedule</span>
+            <span>${durationText} &middot; ${Utils.formatDateShort(leg.date)}</span>
+          </div>
+          <span class="card-cost">${Utils.formatCurrency(costPerPerson, 'EUR')}</span>
         </div>
         <div class="flight-options">${topHtml}</div>
         ${moreHtml}
       `;
     } else {
-      // Fallback: static card when no transit data
       card.innerHTML = `
-        <div class="card-header" aria-expanded="false" onclick="Components.toggleCard(this)">
-          <div class="card-icon">&#128646;</div>
-          <div class="card-title">
-            <h4>${leg.fromName || leg.from} &rarr; ${leg.toName}</h4>
-            <span class="card-subtitle">
-              ${transit.duration || 'Train/Bus'} &middot; ${Utils.formatDateShort(leg.date)}
-            </span>
-            ${trainSchedHtml}
+        <div class="route-card-grid" onclick="Components.toggleCard(this)">
+          <div class="route-card-from">
+            <span class="route-card-code">${Utils.escapeHtml(fromCode)}</span>
+            <span class="route-card-city">${Utils.escapeHtml(leg.fromName || leg.from)}</span>
           </div>
-          <div class="card-cost">${Utils.formatCurrency(costPerPerson, 'EUR')}<br>
+          <div class="route-card-via">
+            <div class="route-card-via-line"></div>
+            <div class="route-card-via-icon"><span class="material-symbols-outlined">train</span></div>
+            <span class="route-card-via-label">TRAIN</span>
+          </div>
+          <div class="route-card-to">
+            <span class="route-card-code">${Utils.escapeHtml(toCode)}</span>
+            <span class="route-card-city">${Utils.escapeHtml(leg.toName || leg.to)}</span>
+          </div>
+        </div>
+        <div class="route-card-footer">
+          <div class="route-card-footer-left">
+            <span class="material-symbols-outlined footer-icon">schedule</span>
+            <span>${durationText} &middot; ${Utils.formatDateShort(leg.date)}</span>
+          </div>
+          <span class="card-cost">${Utils.formatCurrency(costPerPerson, 'EUR')}<br>
             <span style="font-size:0.72rem;font-weight:400;color:var(--color-text-secondary)">per person</span>
-          </div>
-          <span class="expand-arrow">&#9660;</span>
+          </span>
         </div>
         <div class="card-body">
           <div class="card-detail-row">
@@ -1021,7 +1144,8 @@ const Components = {
   },
 
   toggleCard(headerEl) {
-    const body = headerEl.nextElementSibling;
+    const card = headerEl.closest('.timeline-card');
+    const body = card ? card.querySelector('.card-body') : headerEl.nextElementSibling;
     if (!body) return;
     const isExpanded = headerEl.classList.contains('expanded');
 
@@ -1068,7 +1192,7 @@ const Components = {
       step.className = 'loading-step';
       step.id = `loading-step-${i}`;
       step.innerHTML = `
-        <span class="loading-step-icon">&#9675;</span>
+        <span class="loading-step-icon"><span class="material-symbols-outlined">radio_button_unchecked</span></span>
         <span>${text}</span>
       `;
       container.appendChild(step);
@@ -1084,10 +1208,10 @@ const Components = {
 
     if (status === 'active') {
       step.classList.add('active');
-      icon.innerHTML = '&#9679;';
+      icon.innerHTML = '<span class="material-symbols-outlined">pending</span>';
     } else if (status === 'done') {
       step.classList.add('done');
-      icon.innerHTML = '&#10003;';
+      icon.innerHTML = '<span class="material-symbols-outlined">check_circle</span>';
     }
   },
 };

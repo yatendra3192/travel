@@ -1,8 +1,8 @@
 #landing-page {
   background:
-    radial-gradient(ellipse at 20% 50%, rgba(20,184,166,0.10) 0%, transparent 60%),
-    radial-gradient(ellipse at 80% 30%, rgba(59,130,246,0.08) 0%, transparent 50%),
-    radial-gradient(ellipse at 60% 80%, rgba(252,228,236,0.15) 0%, transparent 50%);
+    radial-gradient(ellipse at 20% 50%, rgba(17, 212, 212, 0.06) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 30%, rgba(212, 175, 55, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 60% 80%, rgba(17, 212, 212, 0.04) 0%, transparent 50%);
 }
 
 .landing-container {
@@ -23,7 +23,7 @@
 .landing-header h1 {
   font-size: var(--font-display);
   font-weight: 800;
-  background: linear-gradient(135deg, var(--color-primary) 0%, #3b82f6 100%);
+  background: linear-gradient(135deg, var(--color-gold-light) 0%, var(--color-gold) 50%, var(--color-cyan) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -57,7 +57,7 @@
   display: block;
   font-size: 0.82rem;
   font-weight: 600;
-  color: var(--color-text);
+  color: var(--color-gold);
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -78,16 +78,21 @@
   transition: border-color var(--duration-normal) var(--ease-smooth), box-shadow var(--duration-normal) var(--ease-smooth), background var(--duration-normal) var(--ease-smooth);
   outline: none;
   min-height: var(--touch-min);
+  color-scheme: dark;
+}
+
+.form-group input[type="text"]::placeholder {
+  color: var(--color-text-light);
 }
 
 .form-group input[type="text"]:focus,
 .form-group input[type="date"]:focus {
-  background: rgba(255,255,255,0.95);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .form-group input:focus {
-  border-color: var(--color-primary-light);
-  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.18);
+  border-color: var(--color-cyan);
+  box-shadow: 0 0 0 3px rgba(17, 212, 212, 0.15);
 }
 
 .form-row {
@@ -120,4 +125,43 @@
 
 .trip-form .btn-primary {
   margin-top: var(--space-lg);
+}
+
+.trip-type-toggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: var(--space-md);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  border: 1px solid var(--glass-border);
+}
+
+.trip-type-btn {
+  flex: 1;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s;
+  font-family: inherit;
+}
+
+.trip-type-btn.active {
+  background: var(--color-cyan);
+  color: #0a1a1a;
+}
+
+.trip-type-btn:hover:not(.active) {
+  background: rgba(17, 212, 212, 0.08);
+}
+
+.trip-type-btn .material-symbols-outlined {
+  font-size: 1rem;
 }

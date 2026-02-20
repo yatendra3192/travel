@@ -72,11 +72,12 @@ const CostEngine = {
     const hotels = this.calcHotels(plan);
     const dailyMeals = this.calcDailyMeals(plan);
     const transfers = this.calcTransfers(plan);
+    const activities = this.calcActivities(plan);
 
     return {
       total: {
-        low: flights.low + layoverMeals.low + hotels.low + dailyMeals.low + transfers.low,
-        high: flights.high + layoverMeals.high + hotels.high + dailyMeals.high + transfers.high,
+        low: flights.low + layoverMeals.low + hotels.low + dailyMeals.low + transfers.low + activities.low,
+        high: flights.high + layoverMeals.high + hotels.high + dailyMeals.high + transfers.high + activities.high,
         currency: 'EUR'
       },
       flights,
@@ -84,6 +85,7 @@ const CostEngine = {
       hotels,
       dailyMeals,
       transfers,
+      activities,
     };
   },
 
@@ -167,10 +169,13 @@ const CostEngine = {
 
   calcHotels(plan) {
     let low = 0, high = 0;
-    const rooms = this.calculateRooms(plan.adults);
+    const fallbackRooms = this.calculateRooms(plan.adults);
 
     for (const city of plan.cities) {
       const nightlyRate = city.hotelBasePrice || this.getHotelBasePrice(city.cityCode);
+      // Live SerpApi prices already account for group size (searched with actual adults),
+      // so don't multiply by rooms. Only multiply for fallback estimates.
+      const rooms = city.hotelPriceSource === 'live' ? 1 : fallbackRooms;
       const total = nightlyRate * city.nights * rooms;
       low += total;
       high += total;
@@ -220,5 +225,77 @@ const CostEngine = {
       }
     }
     return { low: Math.round(total), high: Math.round(total) };
+  },
+
+  calcActivities(plan) {
+    let total = 0;
+    if (!plan.itinerary) return { low: 0, high: 0 };
+    const passengers = (plan.adults || 1) + (plan.children || 0);
+    for (const day of plan.itinerary) {
+      if (!day.segments) continue;
+      for (const seg of day.segments) {
+        if (seg.to && seg.to.isActivity && seg.to.entryFee) {
+          total += seg.to.entryFee * passengers;
+        }
+      }
+    }
+    return { low: Math.round(total), high: Math.round(total * 1.15) };
+  },
+
+  calculateDay(day, plan) {
+    if (!day || !day.segments) return { low: 0, high: 0, breakdown: { transport: 0, hotel: 0, meals: 0, activities: 0 } };
+    let transport = 0, activities = 0;
+    const passengers = (plan.adults || 1) + (plan.children || 0);
+
+    for (const seg of day.segments) {
+      // Sum transport costs from via chains
+      if (seg.via) {
+        for (const v of seg.via) {
+          transport += v.cost || 0;
+        }
+      }
+      // Sum entry fees for activity destinations
+      if (seg.to && seg.to.isActivity && seg.to.entryFee) {
+        activities += seg.to.entryFee * passengers;
+      }
+    }
+
+    // Per-day hotel share
+    let hotel = 0;
+    if (day.cityIndex !== undefined && plan.cities[day.cityIndex]) {
+      const city = plan.cities[day.cityIndex];
+      const nightlyRate = city.hotelBasePrice || this.getHotelBasePrice(city.cityCode);
+      const fallbackRooms = this.calculateRooms(plan.adults);
+      const rooms = city.hotelPriceSource === 'live' ? 1 : fallbackRooms;
+      hotel = nightlyRate * rooms;
+    }
+
+    // Per-day meal cost
+    let meals = 0;
+    if (day.type === 'activity' && day.cityIndex !== undefined && plan.cities[day.cityIndex]) {
+      const city = plan.cities[day.cityIndex];
+      if (city.mealCosts) {
+        const mealTier = 'mid';
+        const breakfastCost = city.mealCosts.breakfast?.[mealTier] || 8;
+        const lunchCost = city.mealCosts.lunch?.[mealTier] || 14;
+        const dinnerCost = city.mealCosts.dinner?.[mealTier] || 20;
+        const dailyPerPerson = breakfastCost + lunchCost + dinnerCost;
+        const adultMeals = dailyPerPerson * plan.adults;
+        const childMeals = dailyPerPerson * this.CHILD_MEAL_FACTOR * plan.children;
+        meals = adultMeals + childMeals;
+      }
+    }
+
+    const total = transport + hotel + meals + activities;
+    return {
+      low: Math.round(total * 0.9),
+      high: Math.round(total * 1.1),
+      breakdown: {
+        transport: Math.round(transport),
+        hotel: Math.round(hotel),
+        meals: Math.round(meals),
+        activities: Math.round(activities),
+      },
+    };
   },
 };

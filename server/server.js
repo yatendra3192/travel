@@ -12,8 +12,9 @@ if (!GOOGLE_API_KEY) {
   console.error('FATAL: GOOGLE_API_KEY environment variable is not set.');
   process.exit(1);
 }
-const AIRLABS_API_KEY = process.env.AIRLABS_API_KEY || 'afa16b56-229a-4936-955e-53ab521c4bf0';
-const SERPAPI_KEY = process.env.SERPAPI_KEY || '24d773c04c85f380c9d0cb7a9671169cabaf02d870dde46cdcb9d943d422d9a9';
+const AIRLABS_API_KEY = process.env.AIRLABS_API_KEY;
+const SERPAPI_KEY = process.env.SERPAPI_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 const app = express();
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
@@ -46,7 +47,13 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'public'), {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  },
+}));
 
 // Rate limiting
 const generalLimiter = rateLimit({
@@ -66,6 +73,7 @@ const scrapeLimiter = rateLimit({
 app.use('/api/', generalLimiter);
 app.use('/api/flights', scrapeLimiter);
 app.use('/api/hotels', scrapeLimiter);
+app.use('/api/itinerary', scrapeLimiter);
 
 const TTL = {
   IATA: 7 * 24 * 60 * 60 * 1000,
@@ -504,6 +512,7 @@ async function searchFlightsSerpApi(origin, destination, date, adults = 1, child
   const allFlights = [...(data.best_flights || []), ...(data.other_flights || [])];
   const carriers = {};
   const flights = [];
+  const totalPax = (adults || 1) + (children || 0);
 
   for (const entry of allFlights) {
     if (!entry.flights || entry.flights.length === 0) continue;
@@ -563,7 +572,7 @@ async function searchFlightsSerpApi(origin, destination, date, adults = 1, child
 
     flights.push({
       id,
-      price: round2(convertToEurFrontend(price, currency)),
+      price: round2(convertToEurFrontend(price / totalPax, currency)),
       currency: 'EUR',
       airline: airlineCode,
       airlineName: airlineName,
@@ -1077,6 +1086,157 @@ app.get('/api/maps-config', (req, res) => {
 // ── Exchange rates endpoint (server-controlled, can be updated without frontend deploy) ──
 app.get('/api/exchange-rates', (req, res) => {
   res.json({ base: 'EUR', rates: EUR_RATES, updatedAt: '2025-01-15' });
+});
+
+// ── Route: Generate AI itinerary via OpenAI ──
+app.post('/api/itinerary/generate', async (req, res) => {
+  try {
+    const { destinations, tripMode } = req.body;
+    if (!destinations || !Array.isArray(destinations) || destinations.length === 0) {
+      return res.status(400).json({ error: 'destinations array is required' });
+    }
+
+    // Cache key from sorted destination names + tripMode
+    const destKey = destinations.map(d => d.name).sort().join(',').toLowerCase();
+    const cacheKey = `itinerary:${destKey}:${tripMode || 'roundtrip'}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
+
+    if (!OPENAI_API_KEY) {
+      console.warn('[itinerary] No OPENAI_API_KEY set — returning empty itinerary');
+      return res.json({ itinerary: { days: [] } });
+    }
+
+    const destDescription = destinations.map(d => `${d.name} (${d.nights} nights)`).join(', ');
+    const userMessage = `Plan activities for a ${tripMode || 'roundtrip'} trip visiting: ${destDescription}`;
+
+    const openaiResp = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a travel itinerary planner. For each city, suggest activities organized by day. Return JSON: { "days": [{ "city": "CityName", "dayNumber": 1, "activities": [{ "name": "...", "duration": "1.5 hours", "entryFee": 16, "category": "museum", "description": "..." }]}]}. Include a mix: museum, landmark, food, park, shopping, cultural. Keep realistic for one day (4-6 hours total).',
+          },
+          { role: 'user', content: userMessage },
+        ],
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!openaiResp.ok) {
+      const body = await openaiResp.text();
+      console.warn(`[itinerary] OpenAI HTTP ${openaiResp.status}: ${body.slice(0, 200)}`);
+      return res.json({ itinerary: { days: [] } });
+    }
+
+    const openaiData = await openaiResp.json();
+    const content = openaiData.choices?.[0]?.message?.content;
+    if (!content) {
+      console.warn('[itinerary] OpenAI returned no content');
+      return res.json({ itinerary: { days: [] } });
+    }
+
+    const itinerary = JSON.parse(content);
+    const result = { itinerary };
+    setCache(cacheKey, result, 24 * 60 * 60 * 1000); // 24 hours
+    res.json(result);
+  } catch (err) {
+    console.error('itinerary/generate error:', err.message);
+    res.json({ itinerary: { days: [] } });
+  }
+});
+
+// ── Route: Resolve a place via Google Places Text Search ──
+app.get('/api/places/resolve', async (req, res) => {
+  try {
+    const { name, city, lat, lng } = req.query;
+    if (!name) return res.status(400).json({ error: 'name is required' });
+
+    const cacheKey = `place-resolve:${(name + ':' + (city || '')).toLowerCase()}`;
+    const cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
+
+    const query = encodeURIComponent(`${name} ${city || ''}`);
+    let url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&key=${GOOGLE_API_KEY}`;
+    if (lat && lng) url += `&location=${lat},${lng}&radius=5000`;
+
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) {
+      return res.status(502).json({ error: 'Google Places API error' });
+    }
+    const data = await resp.json();
+
+    if (data.status !== 'OK' || !data.results?.[0]) {
+      return res.json({ placeId: null, name, lat: null, lng: null, rating: null, photoUrl: null, types: [] });
+    }
+
+    const place = data.results[0];
+    const photoRef = place.photos?.[0]?.photo_reference;
+    const photoUrl = photoRef
+      ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoRef}&key=${GOOGLE_API_KEY}`
+      : null;
+
+    const result = {
+      placeId: place.place_id,
+      name: place.name,
+      lat: place.geometry.location.lat,
+      lng: place.geometry.location.lng,
+      rating: place.rating || null,
+      photoUrl,
+      types: place.types || [],
+    };
+
+    setCache(cacheKey, result, TTL.IATA); // 7 days
+    res.json(result);
+  } catch (err) {
+    console.error('places/resolve error:', err.message);
+    res.status(500).json({ error: 'Internal server error resolving place' });
+  }
+});
+
+// ── Route: Search places via Google Places Text Search ──
+app.get('/api/places/search', async (req, res) => {
+  try {
+    const { query: q, lat, lng, radius } = req.query;
+    if (!q) return res.status(400).json({ error: 'query is required' });
+
+    const searchRadius = parseInt(radius) || 10000;
+    const query = encodeURIComponent(q);
+    let url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${query}&key=${GOOGLE_API_KEY}`;
+    if (lat && lng) url += `&location=${lat},${lng}&radius=${searchRadius}`;
+
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) {
+      return res.status(502).json({ error: 'Google Places API error' });
+    }
+    const data = await resp.json();
+
+    if (data.status !== 'OK' || !data.results) {
+      console.warn(`[places/search] Google status: ${data.status}, error: ${data.error_message || 'none'}, query: ${q}`);
+      return res.json({ places: [] });
+    }
+
+    const places = data.results.slice(0, 10).map(place => ({
+      placeId: place.place_id,
+      name: place.name,
+      lat: place.geometry?.location?.lat,
+      lng: place.geometry?.location?.lng,
+      rating: place.rating || null,
+      types: place.types || [],
+    }));
+
+    res.json({ places });
+  } catch (err) {
+    console.error('places/search error:', err.message);
+    res.status(500).json({ error: 'Internal server error searching places' });
+  }
 });
 
 // ── SPA fallback ──

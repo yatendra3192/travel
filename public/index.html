@@ -6,7 +6,8 @@
   <title>Trip Cost Calculator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/variables.css">
   <link rel="stylesheet" href="css/components.css">
   <link rel="stylesheet" href="css/landing.css">
@@ -77,6 +78,15 @@
           </div>
         </div>
 
+        <div class="trip-type-toggle">
+          <button type="button" class="trip-type-btn active" data-mode="roundtrip">
+            <span class="material-symbols-outlined">sync</span> Round Trip
+          </button>
+          <button type="button" class="trip-type-btn" data-mode="oneway">
+            <span class="material-symbols-outlined">arrow_forward</span> One Way
+          </button>
+        </div>
+
         <button type="submit" id="calculate-btn" class="btn-primary" disabled>
           Calculate Trip Cost
         </button>
@@ -94,6 +104,7 @@
 
   <!-- ===== RESULTS PAGE ===== -->
   <div id="results-page" class="page">
+    <div id="background-photo" class="bg-photo-overlay"></div>
     <header class="results-header">
       <div class="header-row-top">
         <button id="back-btn" class="btn-back">&larr; New Search</button>
@@ -103,17 +114,6 @@
             <div class="header-input-wrap">
               <input type="text" id="header-from-input" class="header-input" placeholder="Origin..." autocomplete="off" aria-label="Change origin city">
               <div id="header-from-dropdown" class="autocomplete-dropdown header-dropdown"></div>
-            </div>
-          </div>
-          <span class="header-arrow">&#10132;</span>
-          <div class="header-field header-to">
-            <label>To</label>
-            <div class="header-chips-wrap">
-              <div id="header-dest-chips" class="header-chips"></div>
-              <div class="header-input-wrap">
-                <input type="text" id="header-to-input" class="header-input" placeholder="Add city..." autocomplete="off" aria-label="Add destination city">
-                <div id="header-to-dropdown" class="autocomplete-dropdown header-dropdown"></div>
-              </div>
             </div>
           </div>
         </div>
@@ -127,8 +127,6 @@
             <input type="time" id="search-bar-time" class="header-input header-input-sm" value="00:00" aria-label="Departure time">
           </div>
         </div>
-      </div>
-      <div class="header-row-bottom">
         <div class="header-field header-travelers">
           <label>Travelers</label>
           <div class="header-travelers-row">
@@ -162,6 +160,18 @@
           <button type="button" id="header-recalc-btn" class="btn-recalculate">Recalculate</button>
         </div>
       </div>
+      <div class="header-row-destinations">
+        <label>Destinations</label>
+        <div class="header-dest-row">
+          <div id="header-dest-chips" class="header-chips"></div>
+          <div class="header-field header-to">
+            <div class="header-input-wrap">
+              <input type="text" id="header-to-input" class="header-input" placeholder="Add a destination city..." autocomplete="off" aria-label="Add destination city">
+              <div id="header-to-dropdown" class="autocomplete-dropdown header-dropdown"></div>
+            </div>
+          </div>
+        </div>
+      </div>
     </header>
 
     <div class="results-layout">
@@ -183,7 +193,16 @@
       </aside>
     </div>
 
-    <!-- Mobile bottom sheet -->
+    <!-- Bottom cost bar (always visible) -->
+    <div id="cost-bottom-bar" class="cost-bottom-bar">
+      <div class="cost-bottom-info">
+        <span class="cost-bottom-label">TOTAL ESTIMATE</span>
+        <span class="cost-bottom-amount" id="cost-bottom-amount">--</span>
+      </div>
+      <button id="cost-details-btn" class="cost-proceed-btn">Details &#9656;</button>
+    </div>
+
+    <!-- Mobile bottom sheet (detail expansion) -->
     <div id="mobile-cost-bar" class="mobile-cost-bar">
       <div class="bottom-sheet-handle" id="bottom-sheet-handle"></div>
       <div class="bottom-sheet-peek">
@@ -191,7 +210,7 @@
           <span class="label">Estimated Total</span>
           --
         </div>
-        <button id="mobile-details-btn" class="btn-small">Details</button>
+        <button id="mobile-details-btn" class="btn-small">Close</button>
       </div>
       <div class="bottom-sheet-full" id="bottom-sheet-full"></div>
     </div>
@@ -214,6 +233,7 @@
   <script src="js/cost-engine.js"></script>
   <script src="js/components.js"></script>
   <script src="js/landing.js"></script>
+  <script src="js/itinerary.js"></script>
   <script src="js/results.js"></script>
   <script src="js/app.js"></script>
 </body>
