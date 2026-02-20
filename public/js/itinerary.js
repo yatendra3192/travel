@@ -498,11 +498,10 @@ const Itinerary = {
     this._plan = plan;
 
     const container = document.getElementById('results-timeline');
-    // Clear all content and create fresh itinerary container
-    container.innerHTML = '';
+    // Build all day sections in a DocumentFragment (single DOM operation)
+    const fragment = document.createDocumentFragment();
     const itinContainer = document.createElement('div');
     itinContainer.id = 'itinerary-grid';
-    container.appendChild(itinContainer);
 
     for (const day of plan.itinerary) {
       const section = document.createElement('div');
@@ -541,6 +540,11 @@ const Itinerary = {
 
       itinContainer.appendChild(section);
     }
+
+    fragment.appendChild(itinContainer);
+    // Single DOM mutation: clear and insert all at once
+    container.innerHTML = '';
+    container.appendChild(fragment);
   },
 
   _renderSegmentRow(seg, day) {
@@ -624,16 +628,17 @@ const Itinerary = {
         ${linkHtml}
       </div>`;
     } else if (seg.to?.isActivity) {
-      const actThumbHtml = seg.to.photoUrl
-        ? `<img class="activity-tile-thumb" src="${Utils.escapeHtml(seg.to.photoUrl)}" alt="">`
-        : `<span class="material-symbols-outlined activity-icon">place</span>`;
+      const hasPhoto = !!seg.to.photoUrl;
+      const bgStyle = hasPhoto
+        ? ` style="background-image: url('${Utils.escapeHtml(seg.to.photoUrl)}')"`
+        : '';
       const actRatingHtml = seg.to.rating
         ? `<span class="activity-tile-rating">${seg.to.rating}</span>`
         : '';
       const wikiUrl = `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(seg.to.label || '')}`;
       const actLinkHtml = `<a href="${Utils.escapeHtml(wikiUrl)}" target="_blank" rel="noopener" class="activity-tile-link" title="Wikipedia" onclick="event.stopPropagation()"><span class="material-symbols-outlined" style="font-size:14px">open_in_new</span></a>`;
-      toHtml = `<div class="seg-to activity-tile">
-        ${actThumbHtml}
+      toHtml = `<div class="seg-to activity-tile${hasPhoto ? ' has-photo' : ''}"${bgStyle}>
+        <span class="material-symbols-outlined activity-icon">place</span>
         <span class="seg-code">${Utils.escapeHtml(seg.to.label || '')}</span>
         <span class="seg-sublabel">${Utils.escapeHtml(seg.to.sublabel || '')}${actRatingHtml ? ' · ' + actRatingHtml : ''}</span>
         ${actLinkHtml}
@@ -800,15 +805,11 @@ const Itinerary = {
     let flightLeg = null;
     let flightLegIndex = -1;
     const parentDay = day;
-    console.log('[ViaModal] seg.via:', JSON.stringify((seg.via||[]).map(v => ({mode:v.mode, sourceRef:v.sourceRef}))));
-    console.log('[ViaModal] day type:', parentDay?.type, 'legIndex:', parentDay?.legIndex);
-    console.log('[ViaModal] plan.flightLegs count:', this._plan?.flightLegs?.length);
     // 1. Search via items for a flight sourceRef
     for (const v of (seg.via || [])) {
       if (v.sourceRef?.startsWith('flight:')) {
         flightLegIndex = parseInt(v.sourceRef.split(':')[1], 10);
         flightLeg = this._plan?.flightLegs?.[flightLegIndex] || null;
-        console.log('[ViaModal] Found flight via sourceRef:', v.sourceRef, 'leg:', flightLeg ? 'exists' : 'null', 'offers:', flightLeg?.offers?.length);
         break;
       }
     }
@@ -816,7 +817,6 @@ const Itinerary = {
     if (!flightLeg && parentDay?.legIndex != null) {
       flightLegIndex = parentDay.legIndex;
       flightLeg = this._plan?.flightLegs?.[flightLegIndex] || null;
-      console.log('[ViaModal] Found flight via day.legIndex:', flightLegIndex, 'leg:', flightLeg ? 'exists' : 'null', 'offers:', flightLeg?.offers?.length);
     }
     // 3. If still not found, search all segments in the same day for a flight via
     if (!flightLeg && parentDay) {
@@ -825,7 +825,6 @@ const Itinerary = {
           if (v.sourceRef?.startsWith('flight:')) {
             flightLegIndex = parseInt(v.sourceRef.split(':')[1], 10);
             flightLeg = this._plan?.flightLegs?.[flightLegIndex] || null;
-            console.log('[ViaModal] Found flight in sibling seg:', v.sourceRef, 'offers:', flightLeg?.offers?.length);
             break;
           }
         }
@@ -834,7 +833,6 @@ const Itinerary = {
     }
     const flightOffers = flightLeg?.offers || [];
     const selectedFlight = flightLeg?.selectedOffer;
-    console.log('[ViaModal] Final: flightLeg:', flightLeg ? 'found' : 'null', 'legIndex:', flightLegIndex, 'offers:', flightOffers.length, 'selectedOffer:', selectedFlight ? selectedFlight.airlineName : 'none', 'isTravelDay:', parentDay?.type);
 
     const overlay = document.createElement('div');
     overlay.className = 'transit-modal';
@@ -895,7 +893,6 @@ const Itinerary = {
         const firstTransit = (route.steps || []).find(s => s.mode === 'TRANSIT');
         const departFrom = firstTransit?.departureStop || '';
         const walkTime = (route.steps || []).filter(s => s.mode === 'WALKING').map(s => s.duration || '').filter(Boolean).join(' + ');
-
         const detailsHtml = mapsUrl
           ? `<a href="${mapsUrl}" target="_blank" rel="noopener" class="rt-details">Details <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle">open_in_new</span></a>`
           : `<span class="rt-details">Details</span>`;

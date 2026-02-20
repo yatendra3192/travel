@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const crypto = require('crypto');
 const path = require('path');
 const { getCached, setCache } = require('./cache');
@@ -30,12 +31,17 @@ app.use(cors({
     }
   }
 }));
+// Gzip compression
+app.use(compression());
+
 // Security headers
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('Permissions-Policy', 'geolocation=(), camera=(), microphone=()');
   next();
 });
 
@@ -46,12 +52,17 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, '..', 'public'), {
-  etag: false,
-  lastModified: false,
-  setHeaders: (res) => {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  etag: true,
+  lastModified: true,
+  setHeaders: (res, filePath) => {
+    // Cache fonts and images longer; CSS/JS use no-cache with etag for instant updates
+    if (/\.(woff2?|ttf|eot|svg|png|jpg|ico)$/.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=604800'); // 7 days
+    } else {
+      res.setHeader('Cache-Control', 'no-cache'); // revalidate via etag every request
+    }
   },
 }));
 
@@ -623,17 +634,17 @@ app.get('/api/flights', async (req, res) => {
     const userCurrency = (currency && /^[A-Z]{3}$/i.test(currency)) ? currency.toUpperCase() : 'EUR';
 
     // Build comma-separated airport lists for SerpApi multi-airport search
-    // e.g. origin=DEL + altOrigins=BOM → "DEL,BOM"
+    // e.g. origin=DEL + altOrigins=BOM → "DEL,BOM" (max 5 alternates)
     const allOrigins = [origin.toUpperCase()];
     const allDests = [destination.toUpperCase()];
     if (altOrigins) {
-      for (const code of altOrigins.split(',')) {
+      for (const code of altOrigins.split(',').slice(0, 5)) {
         const c = code.trim().toUpperCase();
         if (/^[A-Z]{3}$/.test(c) && !allOrigins.includes(c)) allOrigins.push(c);
       }
     }
     if (altDestinations) {
-      for (const code of altDestinations.split(',')) {
+      for (const code of altDestinations.split(',').slice(0, 5)) {
         const c = code.trim().toUpperCase();
         if (/^[A-Z]{3}$/.test(c) && !allDests.includes(c)) allDests.push(c);
       }
@@ -763,8 +774,24 @@ app.get('/api/hotels/search-by-name', async (req, res) => {
     if (!query || !checkIn || !checkOut) {
       return res.status(400).json({ error: 'query, checkIn, and checkOut are required' });
     }
+    if (query.length > 255) {
+      return res.status(400).json({ error: 'Query too long (max 255 chars).' });
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOut)) {
       return res.status(400).json({ error: 'Invalid date format. Expected YYYY-MM-DD.' });
+    }
+    // Validate date range
+    const ciDate = new Date(checkIn + 'T00:00:00Z');
+    const coDate = new Date(checkOut + 'T00:00:00Z');
+    const today = new Date(); today.setUTCHours(0, 0, 0, 0);
+    if (isNaN(ciDate) || isNaN(coDate)) {
+      return res.status(400).json({ error: 'Invalid date values.' });
+    }
+    if (coDate <= ciDate) {
+      return res.status(400).json({ error: 'checkOut must be after checkIn.' });
+    }
+    if ((coDate - ciDate) / (1000 * 60 * 60 * 24) > 30) {
+      return res.status(400).json({ error: 'Maximum stay is 30 nights.' });
     }
 
     const numAdults = parseInt(adults) || 1;
@@ -832,34 +859,10 @@ function convertToEur(amount, currency) {
 }
 
 // ── Route: Transfer cost estimate using Google Directions API ──
-const TAXI_RATES = {
-  'IN': { perKm: 0.30, baseFare: 2.50, currency: 'EUR' },
-  'NL': { perKm: 2.20, baseFare: 3.00, currency: 'EUR' },
-  'BE': { perKm: 1.80, baseFare: 2.50, currency: 'EUR' },
-  'FR': { perKm: 1.50, baseFare: 2.50, currency: 'EUR' },
-  'ES': { perKm: 1.10, baseFare: 2.50, currency: 'EUR' },
-  'DE': { perKm: 2.00, baseFare: 3.50, currency: 'EUR' },
-  'IT': { perKm: 1.30, baseFare: 3.00, currency: 'EUR' },
-  'GB': { perKm: 2.50, baseFare: 3.50, currency: 'EUR' },
-  'CH': { perKm: 3.50, baseFare: 6.00, currency: 'EUR' },
-  'AT': { perKm: 1.50, baseFare: 3.00, currency: 'EUR' },
-  'PT': { perKm: 0.90, baseFare: 2.00, currency: 'EUR' },
-  'GR': { perKm: 0.80, baseFare: 1.50, currency: 'EUR' },
-  'US': { perKm: 2.00, baseFare: 3.00, currency: 'EUR' },
-  'AE': { perKm: 0.50, baseFare: 3.00, currency: 'EUR' },
-  'JP': { perKm: 3.00, baseFare: 5.00, currency: 'EUR' },
-  'AU': { perKm: 1.80, baseFare: 3.50, currency: 'EUR' },
-  'TR': { perKm: 0.50, baseFare: 1.50, currency: 'EUR' },
-  'TH': { perKm: 0.30, baseFare: 1.00, currency: 'EUR' },
-  'DEFAULT': { perKm: 1.50, baseFare: 3.00, currency: 'EUR' },
-};
-
-const PUBLIC_TRANSPORT_RATES = {
-  'IN': 0.05, 'NL': 0.15, 'BE': 0.12, 'FR': 0.10, 'ES': 0.08,
-  'DE': 0.12, 'IT': 0.08, 'GB': 0.15, 'CH': 0.20, 'AT': 0.10,
-  'PT': 0.06, 'GR': 0.05, 'US': 0.10, 'AE': 0.08, 'JP': 0.15,
-  'AU': 0.12, 'TR': 0.04, 'TH': 0.03, 'DEFAULT': 0.10,
-};
+// Shared rate constants (single source of truth for server + frontend)
+const TravelRates = require('../public/js/rates.js');
+const TAXI_RATES = TravelRates.TAXI_RATES;
+const PUBLIC_TRANSPORT_RATES = TravelRates.PUBLIC_TRANSPORT_RATES;
 
 app.get('/api/transfer-estimate', async (req, res) => {
   try {
@@ -1056,7 +1059,7 @@ app.get('/api/transfer-estimate', async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('transfer-estimate error:', err);
-    res.status(500).json({ error: 'Internal server error estimating transfer' });
+    res.status(500).json({ error: 'Transfer estimation failed', code: 'TRANSFER_ERROR' });
   }
 });
 
@@ -1117,7 +1120,7 @@ app.post('/api/itinerary/generate', async (req, res) => {
         'Authorization': `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
         response_format: { type: 'json_object' },
         messages: [
           {
@@ -1206,6 +1209,7 @@ app.get('/api/places/search', async (req, res) => {
   try {
     const { query: q, lat, lng, radius } = req.query;
     if (!q) return res.status(400).json({ error: 'query is required' });
+    if (q.length > 255) return res.status(400).json({ error: 'Query too long (max 255 chars).' });
 
     const searchRadius = parseInt(radius) || 10000;
     const query = encodeURIComponent(q);

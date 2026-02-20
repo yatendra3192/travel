@@ -137,6 +137,40 @@
   font-size: 0.75rem;
 }
 
+/* ── Share button ── */
+.btn-share {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.share-toast {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--color-cyan);
+  color: #0a1a1a;
+  padding: 10px 20px;
+  border-radius: var(--radius-full);
+  font-size: 0.85rem;
+  font-weight: 600;
+  z-index: 9999;
+  opacity: 0;
+  transition: opacity 0.3s, transform 0.3s;
+  pointer-events: none;
+}
+
+.share-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.share-toast.toast-warn {
+  background: rgba(220, 53, 69, 0.9);
+  color: #fff;
+}
+
 /* ── Compact header elements ── */
 .results-header .header-field label {
   font-size: 0.6rem;
@@ -679,6 +713,36 @@
   font-weight: 800;
   color: var(--color-text);
   line-height: 1.2;
+}
+
+.cost-bottom-perp {
+  font-size: 0.7rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+
+.cost-bottom-mini {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cost-mini-item {
+  font-size: 0.68rem;
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.cost-mini-item .material-symbols-outlined {
+  font-size: 12px;
+  color: var(--color-text-light);
+}
+
+.cost-mini-val {
+  font-weight: 600;
+  color: var(--color-text);
 }
 
 .cost-proceed-btn {

@@ -314,7 +314,7 @@ const Landing = {
         return false;
       });
       if (duplicate) {
-        alert('Origin and destination cannot be the same city.');
+        this._showFormError('Origin and destination cannot be the same city.');
         return;
       }
 
@@ -337,5 +337,20 @@ const Landing = {
     const valid = this.fromPlace && this.destinations.length > 0 && this.dateInput.value;
     this.calculateBtn.disabled = !valid;
     return valid;
+  },
+
+  _showFormError(message) {
+    // Remove existing error if any
+    const existing = document.querySelector('.form-error-toast');
+    if (existing) existing.remove();
+    const toast = document.createElement('div');
+    toast.className = 'form-error-toast';
+    toast.textContent = message;
+    this.form.insertBefore(toast, this.calculateBtn);
+    requestAnimationFrame(() => toast.classList.add('visible'));
+    setTimeout(() => {
+      toast.classList.remove('visible');
+      setTimeout(() => toast.remove(), 300);
+    }, 3500);
   },
 };

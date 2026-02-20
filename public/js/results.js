@@ -1,14 +1,3 @@
-// Client-side haversine for fallback distance estimation
-function haversineKmClient(lat1, lng1, lat2, lng2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 const Results = {
   plan: null,
   tripData: null,
@@ -18,6 +7,9 @@ const Results = {
 
   init() {
     document.getElementById('back-btn').addEventListener('click', () => App.goBack());
+
+    // Share button — copies trip summary to clipboard
+    document.getElementById('share-btn')?.addEventListener('click', () => this._shareTripSummary());
 
     // Bottom cost bar "Details" button — opens mobile bottom sheet
     document.getElementById('cost-details-btn')?.addEventListener('click', () => {
@@ -320,6 +312,7 @@ const Results = {
 
     this.tripData = tripData;
     this.populateSearchBar(tripData);
+    this._renderSkeletonTimeline(tripData.destinations.length);
 
     const overlay = document.getElementById('loading-overlay');
     overlay.style.display = 'flex';
@@ -471,6 +464,19 @@ const Results = {
       Components.updateLoadingStep(2, 'done');
       Components.updateLoadingStep(3, 'done');
 
+      // Track partial failures and show warnings after trip generation
+      const warnings = [];
+      const emptyFlightLegs = flightResults.filter((r, i) =>
+        flightLegs[i].legType === 'flight' && flightLegs[i].from !== flightLegs[i].to && (!r.flights || r.flights.length === 0)
+      ).length;
+      if (emptyFlightLegs > 0) {
+        warnings.push(`No flights found for ${emptyFlightLegs} route${emptyFlightLegs > 1 ? 's' : ''}`);
+      }
+      const emptyHotels = hotelResults.filter(r => !r.hotels || r.hotels.length === 0).length;
+      if (emptyHotels > 0) {
+        warnings.push(`No hotels found for ${emptyHotels} cit${emptyHotels > 1 ? 'ies' : 'y'}`);
+      }
+
       // Layover meals need flight results (for layover airports) — quick local data fetch
       const allLayovers = [];
       flightLegs.forEach((leg, i) => {
@@ -609,7 +615,10 @@ const Results = {
       await new Promise(r => setTimeout(r, 400));
       overlay.style.display = 'none';
 
-      // Trip plan ready
+      // Show partial failure warnings (delayed so they appear after overlay closes)
+      if (warnings.length > 0) {
+        setTimeout(() => this._showToast(warnings.join(' · '), 'warn'), 600);
+      }
 
     } catch (err) {
       if (abortSignal.aborted) { this._generating = false; return; }
@@ -617,11 +626,14 @@ const Results = {
       overlay.style.display = 'none';
       this._generating = false;
       const timeline = document.getElementById('results-timeline');
-      const errorDiv = document.createElement('div');
-      errorDiv.className = 'error-banner';
-      errorDiv.innerHTML = `Something went wrong: ${Utils.escapeHtml(err.message)}. Please try again.<br><button onclick="Results.generateTripPlan(Results.tripData)" class="btn-primary" style="margin-top:12px;padding:8px 24px;">Retry</button>`;
-      timeline.innerHTML = '';
-      timeline.appendChild(errorDiv);
+      timeline.innerHTML = `
+        <div class="empty-state">
+          <span class="material-symbols-outlined" style="font-size:48px;color:var(--color-error);margin-bottom:12px;">error_outline</span>
+          <h3 style="margin-bottom:8px;color:var(--color-text);">Something went wrong</h3>
+          <p style="color:var(--color-text-secondary);font-size:0.9rem;margin-bottom:16px;">${Utils.escapeHtml(err.message)}</p>
+          <button onclick="Results.generateTripPlan(Results.tripData)" class="btn-primary" style="width:auto;padding:10px 32px;">Try Again</button>
+        </div>
+      `;
     } finally {
       this._generating = false;
     }
@@ -1377,6 +1389,63 @@ const Results = {
     return transfers;
   },
 
+  _renderSkeletonTimeline(numCities) {
+    const container = document.getElementById('results-timeline');
+    const sidebar = document.getElementById('cost-sidebar');
+    container.innerHTML = '';
+    // Build skeleton cards for each city (flight + city/hotel)
+    const count = Math.max(1, numCities);
+    for (let i = 0; i < count; i++) {
+      // Skeleton flight card
+      container.innerHTML += `
+        <div class="skeleton-card" style="animation-delay:${i * 0.1}s">
+          <div class="skeleton-flight">
+            <div class="skeleton-circle"></div>
+            <div class="skeleton-flight-info">
+              <div class="skeleton-line w-60"></div>
+              <div class="skeleton-line w-80"></div>
+            </div>
+            <div class="skeleton-line w-30" style="max-width:60px"></div>
+          </div>
+          <div class="skeleton-footer">
+            <div class="skeleton-line w-40"></div>
+            <div class="skeleton-line w-30" style="max-width:50px"></div>
+          </div>
+        </div>
+        <div class="timeline-connector"></div>
+      `;
+      // Skeleton city/hotel card
+      container.innerHTML += `
+        <div class="skeleton-card" style="animation-delay:${i * 0.1 + 0.05}s">
+          <div class="skeleton-flight">
+            <div class="skeleton-circle" style="border-radius:8px;width:56px;height:56px"></div>
+            <div class="skeleton-flight-info">
+              <div class="skeleton-line w-60"></div>
+              <div class="skeleton-line w-40"></div>
+              <div class="skeleton-line w-30"></div>
+            </div>
+            <div class="skeleton-line w-30" style="max-width:60px"></div>
+          </div>
+        </div>
+        <div class="timeline-connector"></div>
+      `;
+    }
+    // Skeleton cost sidebar
+    if (sidebar) {
+      const costCard = sidebar.querySelector('.cost-card');
+      if (costCard) {
+        document.getElementById('total-cost-range').innerHTML = '<div class="skeleton-line h-lg w-60" style="margin:0 auto"></div>';
+        document.getElementById('cost-breakdown').innerHTML = `
+          <div style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+            <div class="skeleton-line w-80"></div>
+            <div class="skeleton-line w-60"></div>
+            <div class="skeleton-line w-40"></div>
+          </div>
+        `;
+      }
+    }
+  },
+
   renderTimeline() {
     // If itinerary grid is active, re-render that instead of the legacy timeline
     if (this.plan?.itinerary && this.plan.itinerary.length > 0) {
@@ -1534,6 +1603,10 @@ const Results = {
     const result = await this._showNightsPopup(city.name, city.nights);
     if (result === null) return; // cancelled
 
+    // Show loading state on affected city card
+    const cityCard = document.querySelector(`.timeline-card[data-type="city"][data-index="${cityIndex}"]`);
+    if (cityCard) cityCard.classList.add('card-loading');
+
     const wasZero = city.nights === 0;
     city.nights = result;
     const isZero = result === 0;
@@ -1669,7 +1742,10 @@ const Results = {
             bicycling: est.bicycling || null,
           });
         }
-      } catch (e) { console.warn('Transfer recalc failed:', e); }
+      } catch (e) {
+        console.warn('Transfer recalc failed:', e);
+        this._showToast('Could not update transfer route', 'warn');
+      }
     }
 
     // Recalculate return/last transfer if this is the last city
@@ -1697,7 +1773,10 @@ const Results = {
             bicycling: est.bicycling || null,
           });
         }
-      } catch (e) { console.warn('Return transfer recalc failed:', e); }
+      } catch (e) {
+        console.warn('Return transfer recalc failed:', e);
+        this._showToast('Could not update return transfer', 'warn');
+      }
     }
 
     // Also recalculate the departure transfer for the previous city if it points to hotel
@@ -1727,7 +1806,10 @@ const Results = {
               bicycling: est.bicycling || null,
             });
           }
-        } catch (e) { console.warn('Departure transfer recalc failed:', e); }
+        } catch (e) {
+          console.warn('Departure transfer recalc failed:', e);
+          Results._showToast('Could not update departure transfer', 'warn');
+        }
       }
     }
   },
@@ -1791,7 +1873,10 @@ const Results = {
             transitRoutes: est.transitRoutes || [], walking: est.walking || null, bicycling: est.bicycling || null,
           });
         }
-      } catch (e) { console.warn('Transfer recalc for mode change failed:', e); }
+      } catch (e) {
+        console.warn('Transfer recalc for mode change failed:', e);
+        Results._showToast('Could not update transfer route', 'warn');
+      }
     }
 
     // Build ground-mode label for a city: use real station name if available, else "City Station"
@@ -2402,6 +2487,31 @@ const Results = {
       bottomAmount.innerHTML = Utils.formatCurrencyRange(costs.total.low, costs.total.high, 'EUR');
     }
 
+    // Per-person cost
+    const perPersonEl = document.getElementById('cost-bottom-perperson');
+    if (perPersonEl && this.plan) {
+      const totalPax = (this.plan.adults || 1) + (this.plan.children || 0);
+      if (totalPax > 1) {
+        const pp = Math.round(costs.total.low / totalPax);
+        perPersonEl.textContent = `~${Utils.formatCurrency(pp, 'EUR')}/person`;
+      } else {
+        perPersonEl.textContent = '';
+      }
+    }
+
+    // Mini breakdown in bottom bar
+    const miniEl = document.getElementById('cost-bottom-mini');
+    if (miniEl) {
+      const items = [];
+      if (costs.flights?.low) items.push({ icon: 'flight', val: Utils.formatCurrency(costs.flights.low, 'EUR') });
+      if (costs.hotels?.low) items.push({ icon: 'hotel', val: Utils.formatCurrency(costs.hotels.low, 'EUR') });
+      if (costs.transfers?.low) items.push({ icon: 'directions_car', val: Utils.formatCurrency(costs.transfers.low, 'EUR') });
+      if (costs.dailyMeals?.low) items.push({ icon: 'restaurant', val: Utils.formatCurrency(costs.dailyMeals.low, 'EUR') });
+      miniEl.innerHTML = items.map(i =>
+        `<span class="cost-mini-item"><span class="material-symbols-outlined">${i.icon}</span><span class="cost-mini-val">${i.val}</span></span>`
+      ).join('');
+    }
+
     // Mobile bottom sheet
     const mobileTotal = document.getElementById('mobile-total');
     if (mobileTotal) {
@@ -2422,5 +2532,50 @@ const Results = {
         </div>
       `;
     }
+  },
+
+  _shareTripSummary() {
+    if (!this.plan || !this.tripData) return;
+    const plan = this.plan;
+    const cities = plan.cities.map(c => c.cityName).join(' → ');
+    const from = plan.from?.cityName || '';
+    const date = Utils.formatDate(plan.departureDate);
+    const travelers = `${plan.adults} adult${plan.adults > 1 ? 's' : ''}${plan.children > 0 ? ', ' + plan.children + ' child' + (plan.children > 1 ? 'ren' : '') : ''}`;
+    const cost = document.getElementById('cost-bottom-amount')?.textContent || '--';
+
+    const lines = [
+      `TripWise — Trip Summary`,
+      ``,
+      `From: ${from}`,
+      `Route: ${cities}`,
+      `Date: ${date}`,
+      `Travelers: ${travelers}`,
+      `Estimated Total: ${cost}`,
+      ``,
+      `Plan your trip at https://plan.aiezzy.com`,
+    ];
+    const text = lines.join('\n');
+
+    if (navigator.share) {
+      navigator.share({ title: 'TripWise Trip Summary', text }).catch(() => {});
+    } else if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        this._showToast('Trip summary copied to clipboard!');
+      }).catch(() => {});
+    }
+  },
+
+  _showToast(message, type = 'info') {
+    let toast = document.querySelector('.share-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.className = 'share-toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.remove('toast-warn');
+    if (type === 'warn') toast.classList.add('toast-warn');
+    toast.classList.add('visible');
+    setTimeout(() => toast.classList.remove('visible'), 2500);
   },
 };

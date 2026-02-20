@@ -32,26 +32,16 @@ const CostEngine = {
     'DEFAULT': 100,
   },
 
-  TRANSFER_RATES: {
-    'IN': { taxi: 0.30, baseFare: 2.50, publicTransport: 0.05 },
-    'NL': { taxi: 2.20, baseFare: 3.00, publicTransport: 0.15 },
-    'BE': { taxi: 1.80, baseFare: 2.50, publicTransport: 0.12 },
-    'FR': { taxi: 1.50, baseFare: 2.50, publicTransport: 0.10 },
-    'ES': { taxi: 1.10, baseFare: 2.50, publicTransport: 0.08 },
-    'DE': { taxi: 2.00, baseFare: 3.50, publicTransport: 0.12 },
-    'IT': { taxi: 1.30, baseFare: 3.00, publicTransport: 0.08 },
-    'GB': { taxi: 2.50, baseFare: 3.50, publicTransport: 0.15 },
-    'US': { taxi: 2.00, baseFare: 3.00, publicTransport: 0.10 },
-    'AE': { taxi: 0.50, baseFare: 3.00, publicTransport: 0.08 },
-    'DEFAULT': { taxi: 1.50, baseFare: 3.00, publicTransport: 0.10 },
-  },
+  // Transfer rates now sourced from shared TravelRates (public/js/rates.js)
 
   getHotelBasePrice(cityCode) {
     return this.FALLBACK_HOTEL_PRICES[cityCode] || this.FALLBACK_HOTEL_PRICES['DEFAULT'];
   },
 
   getTransferRate(country) {
-    return this.TRANSFER_RATES[country] || this.TRANSFER_RATES['DEFAULT'];
+    const taxi = TravelRates.getTaxiRate(country);
+    const pt = TravelRates.getPublicTransportRate(country);
+    return { taxi: taxi.perKm, baseFare: taxi.baseFare, publicTransport: pt };
   },
 
   estimateTransferCost(distanceKm, country) {

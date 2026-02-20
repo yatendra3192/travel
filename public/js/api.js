@@ -1,16 +1,28 @@
 const Api = {
+  // In-flight request deduplication: prevents identical concurrent API calls
+  _inflight: new Map(),
+  _dedup(key, fetchFn) {
+    if (this._inflight.has(key)) return this._inflight.get(key);
+    const promise = fetchFn().finally(() => this._inflight.delete(key));
+    this._inflight.set(key, promise);
+    return promise;
+  },
+
   async resolveIata(cityName, lat, lng) {
-    const params = new URLSearchParams({ keyword: cityName });
-    if (lat != null && lng != null) {
-      params.set('lat', String(lat));
-      params.set('lng', String(lng));
-    }
-    const resp = await fetch(`/api/resolve-iata?${params}`);
-    if (!resp.ok) {
-      const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(err.error || `Failed to resolve IATA for "${cityName}"`);
-    }
-    return resp.json();
+    const key = `iata:${cityName}:${lat}:${lng}`;
+    return this._dedup(key, async () => {
+      const params = new URLSearchParams({ keyword: cityName });
+      if (lat != null && lng != null) {
+        params.set('lat', String(lat));
+        params.set('lng', String(lng));
+      }
+      const resp = await fetch(`/api/resolve-iata?${params}`);
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(err.error || `Failed to resolve IATA for "${cityName}"`);
+      }
+      return resp.json();
+    });
   },
 
   async searchFlights(origin, destination, date, adults, children, fromCity, toCity, altOrigins, altDestinations) {
@@ -45,19 +57,24 @@ const Api = {
   },
 
   async getTransferEstimate(originLat, originLng, destLat, destLng, country, originText, destText, departureDate) {
-    const params = new URLSearchParams({
-      originLat: String(originLat),
-      originLng: String(originLng),
-      destLat: String(destLat),
-      destLng: String(destLng),
-      country: country || '',
+    // Round coords to 4 decimals (~11m) for cache key to avoid near-duplicate requests
+    const rnd = v => Math.round(v * 10000) / 10000;
+    const key = `transfer:${rnd(originLat)},${rnd(originLng)}-${rnd(destLat)},${rnd(destLng)}`;
+    return this._dedup(key, async () => {
+      const params = new URLSearchParams({
+        originLat: String(originLat),
+        originLng: String(originLng),
+        destLat: String(destLat),
+        destLng: String(destLng),
+        country: country || '',
+      });
+      if (originText) params.set('originText', originText);
+      if (destText) params.set('destText', destText);
+      if (departureDate) params.set('departureDate', departureDate);
+      const resp = await fetch(`/api/transfer-estimate?${params}`);
+      if (!resp.ok) return null;
+      return resp.json();
     });
-    if (originText) params.set('originText', originText);
-    if (destText) params.set('destText', destText);
-    if (departureDate) params.set('departureDate', departureDate);
-    const resp = await fetch(`/api/transfer-estimate?${params}`);
-    if (!resp.ok) return null;
-    return resp.json();
   },
 
   async getNearbyAirports(lat, lng) {

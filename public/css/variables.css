@@ -120,6 +120,38 @@ body {
 
 .page.active {
   display: block;
+  animation: pageEnter 0.35s var(--ease-smooth) both;
+}
+
+@keyframes pageEnter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Keyboard focus outline for interactive elements */
+[role="button"]:focus-visible,
+.flight-option:focus-visible,
+.hotel-option:focus-visible,
+.transfer-mode-section:focus-visible,
+.mode-pill:focus-visible,
+.airport-select:focus-visible {
+  outline: 2px solid var(--color-cyan);
+  outline-offset: 2px;
+  border-radius: var(--radius-glass-sm);
+}
+
+/* Respect user motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Smooth scrolling for interactive navigation */
+html {
+  scroll-behavior: smooth;
 }
 
 /* Material Symbols baseline fix */

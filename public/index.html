@@ -3,7 +3,34 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Trip Cost Calculator</title>
+  <title>TripWise — Smart Door-to-Door Travel Cost Calculator</title>
+  <meta name="description" content="Calculate your complete door-to-door travel cost in seconds. Real-time flight prices, hotel rates, transfer costs, and daily meal estimates — all in one place.">
+  <meta name="theme-color" content="#102222">
+  <meta property="og:title" content="TripWise — Smart Travel Cost Calculator">
+  <meta property="og:description" content="Plan your trip with real-time prices for flights, hotels, transfers, and meals. Get accurate door-to-door cost estimates instantly.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://plan.aiezzy.com">
+  <meta property="og:image" content="https://plan.aiezzy.com/og-image.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="TripWise — Smart Travel Cost Calculator">
+  <meta name="twitter:description" content="Plan your trip with real-time prices for flights, hotels, transfers, and meals.">
+  <meta name="twitter:image" content="https://plan.aiezzy.com/og-image.png">
+  <link rel="canonical" href="https://plan.aiezzy.com">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "TripWise",
+    "description": "Smart door-to-door travel cost calculator with real-time flight prices, hotel rates, transfer costs, and meal estimates.",
+    "url": "https://plan.aiezzy.com",
+    "applicationCategory": "TravelApplication",
+    "operatingSystem": "All",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+  }
+  </script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -20,11 +47,17 @@
   <div id="landing-page" class="page active">
     <div class="landing-container">
       <header class="landing-header">
-        <h1>Trip Cost Calculator</h1>
+        <h1>TripWise</h1>
         <p class="landing-subtitle">Calculate your complete door-to-door travel cost in seconds</p>
+        <div class="landing-features">
+          <span class="landing-feature"><span class="material-symbols-outlined">flight</span> Real-time flights</span>
+          <span class="landing-feature"><span class="material-symbols-outlined">hotel</span> Hotel prices</span>
+          <span class="landing-feature"><span class="material-symbols-outlined">directions_car</span> Transfers</span>
+          <span class="landing-feature"><span class="material-symbols-outlined">restaurant</span> Meal estimates</span>
+        </div>
       </header>
 
-      <form id="trip-form" class="trip-form" autocomplete="off">
+      <form id="trip-form" class="trip-form" autocomplete="off" role="form" aria-label="Trip cost calculator">
         <!-- FROM -->
         <div class="form-group">
           <label for="from-input">From</label>
@@ -55,25 +88,25 @@
           <div class="form-group third">
             <label>Adults</label>
             <div class="stepper">
-              <button type="button" class="stepper-btn minus" data-target="adults-count">-</button>
+              <button type="button" class="stepper-btn minus" data-target="adults-count" aria-label="Decrease adults">-</button>
               <span id="adults-count" class="stepper-value">2</span>
-              <button type="button" class="stepper-btn plus" data-target="adults-count">+</button>
+              <button type="button" class="stepper-btn plus" data-target="adults-count" aria-label="Increase adults">+</button>
             </div>
           </div>
           <div class="form-group third">
             <label>Children <span class="age-hint">(2-11)</span></label>
             <div class="stepper">
-              <button type="button" class="stepper-btn minus" data-target="children-count">-</button>
+              <button type="button" class="stepper-btn minus" data-target="children-count" aria-label="Decrease children">-</button>
               <span id="children-count" class="stepper-value">0</span>
-              <button type="button" class="stepper-btn plus" data-target="children-count">+</button>
+              <button type="button" class="stepper-btn plus" data-target="children-count" aria-label="Increase children">+</button>
             </div>
           </div>
           <div class="form-group third">
             <label>Infants <span class="age-hint">(0-2)</span></label>
             <div class="stepper">
-              <button type="button" class="stepper-btn minus" data-target="infants-count">-</button>
+              <button type="button" class="stepper-btn minus" data-target="infants-count" aria-label="Decrease infants">-</button>
               <span id="infants-count" class="stepper-value">0</span>
-              <button type="button" class="stepper-btn plus" data-target="infants-count">+</button>
+              <button type="button" class="stepper-btn plus" data-target="infants-count" aria-label="Increase infants">+</button>
             </div>
           </div>
         </div>
@@ -95,7 +128,7 @@
   </div>
 
   <!-- ===== LOADING OVERLAY ===== -->
-  <div id="loading-overlay" class="loading-overlay" style="display:none;" role="status" aria-live="polite">
+  <div id="loading-overlay" class="loading-overlay" style="display:none;" role="status" aria-live="polite" aria-label="Loading trip results">
     <div class="loading-content">
       <div class="loading-spinner"></div>
       <div id="loading-steps" class="loading-steps"></div>
@@ -108,6 +141,7 @@
     <header class="results-header">
       <div class="header-row-top">
         <button id="back-btn" class="btn-back">&larr; New Search</button>
+        <button id="share-btn" class="btn-back btn-share" title="Share trip summary" aria-label="Share trip summary"><span class="material-symbols-outlined" style="font-size:1rem;vertical-align:middle;">share</span> Share</button>
         <div class="header-route-group">
           <div class="header-field header-from">
             <label>From</label>
@@ -198,7 +232,9 @@
       <div class="cost-bottom-info">
         <span class="cost-bottom-label">TOTAL ESTIMATE</span>
         <span class="cost-bottom-amount" id="cost-bottom-amount">--</span>
+        <span class="cost-bottom-perp" id="cost-bottom-perperson"></span>
       </div>
+      <div class="cost-bottom-mini" id="cost-bottom-mini"></div>
       <button id="cost-details-btn" class="cost-proceed-btn">Details &#9656;</button>
     </div>
 
@@ -230,11 +266,13 @@
   </script>
   <script src="js/utils.js"></script>
   <script src="js/api.js"></script>
+  <script src="js/rates.js"></script>
   <script src="js/cost-engine.js"></script>
   <script src="js/components.js"></script>
   <script src="js/landing.js"></script>
   <script src="js/itinerary.js"></script>
   <script src="js/results.js"></script>
   <script src="js/app.js"></script>
+  <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});</script>
 </body>
 </html>

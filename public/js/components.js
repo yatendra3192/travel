@@ -87,7 +87,7 @@ const Components = {
                 <div class="step-icon-col"><span class="step-dot walk-dot"></span><div class="step-line walk-line"></div></div>
                 <div class="step-content">
                   <div class="step-label">Walk</div>
-                  <div class="step-meta">${step.duration}${step.distance ? ', ' + step.distance : ''}</div>
+                  <div class="step-meta">${Utils.escapeHtml(step.duration)}${step.distance ? ', ' + Utils.escapeHtml(step.distance) : ''}</div>
                 </div>
               </div>`;
           }
@@ -115,7 +115,7 @@ const Components = {
 
         return `
           <div class="transit-route-option ${ri === 0 ? 'active' : ''}" data-route="${ri}">
-            <div class="route-option-header" onclick="event.stopPropagation(); Components.toggleRouteDetail(this)">
+            <div class="route-option-header" role="button" tabindex="0" aria-expanded="false" onclick="event.stopPropagation(); Components.toggleRouteDetail(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
               <div class="route-option-summary">
                 <span class="route-time">${route.departureTime && route.arrivalTime ? Utils.escapeHtml(route.departureTime) + ' — ' + Utils.escapeHtml(route.arrivalTime) : ''}</span>
                 <span class="route-duration">${Utils.escapeHtml(route.duration)}</span>
@@ -147,7 +147,7 @@ const Components = {
       : '';
 
     card.innerHTML = `
-      <div class="route-card-grid" onclick="Components.toggleCard(this)">
+      <div class="route-card-grid" role="button" tabindex="0" aria-expanded="false" onclick="Components.toggleCard(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
         <div class="route-card-from">
           <span class="route-card-code transfer-code">${fromCode}</span>
           <span class="route-card-city">${fromCity}</span>
@@ -165,13 +165,13 @@ const Components = {
       <div class="route-card-footer">
         <div class="route-card-footer-left">
           <span class="material-symbols-outlined footer-icon">schedule</span>
-          <span>${transfer.durationText || 'Transfer'}${transfer.distanceKm ? ' &middot; ~' + Math.round(transfer.distanceKm) + ' km' : ''}</span>
+          <span>${Utils.escapeHtml(transfer.durationText || 'Transfer')}${transfer.distanceKm ? ' &middot; ~' + Math.round(transfer.distanceKm) + ' km' : ''}</span>
           ${mapsLinkHtml}
         </div>
         <span class="card-cost" id="transfer-cost-${index}">${Utils.formatCurrency(headerCost, 'EUR')}</span>
       </div>
       <div class="card-body">
-        <div class="transfer-mode-section${sel === 'taxi' ? ' selected' : ''}" data-mode="taxi" onclick="Components.selectTransferMode(${index}, 'taxi')">
+        <div class="transfer-mode-section${sel === 'taxi' ? ' selected' : ''}" data-mode="taxi" role="radio" tabindex="0" aria-checked="${sel === 'taxi'}" aria-label="Taxi transfer" onclick="Components.selectTransferMode(${index}, 'taxi')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
           <div class="transfer-mode-header">
             <span class="transfer-mode-check">${sel === 'taxi' ? '&#9679;' : '&#9675;'}</span>
             <span class="material-symbols-outlined" style="font-size:18px">local_taxi</span> <strong>Taxi / Cab</strong>
@@ -182,7 +182,7 @@ const Components = {
           </div>
         </div>
 
-        <div class="transfer-mode-section${sel === 'transit' ? ' selected' : ''}" data-mode="transit" onclick="Components.selectTransferMode(${index}, 'transit')">
+        <div class="transfer-mode-section${sel === 'transit' ? ' selected' : ''}" data-mode="transit" role="radio" tabindex="0" aria-checked="${sel === 'transit'}" aria-label="Public transport transfer" onclick="Components.selectTransferMode(${index}, 'transit')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
           <div class="transfer-mode-header">
             <span class="transfer-mode-check">${sel === 'transit' ? '&#9679;' : '&#9675;'}</span>
             <span class="material-symbols-outlined" style="font-size:18px">directions_transit</span> <strong>Public Transport</strong>
@@ -190,26 +190,26 @@ const Components = {
           </div>
           ${transitDetailHtml
             ? `<div class="transit-routes-list" onclick="event.stopPropagation()">${transitDetailHtml}</div>`
-            : `<div class="transfer-mode-meta">${transfer.transitDuration || transfer.durationText || 'Duration varies'}</div>`
+            : `<div class="transfer-mode-meta">${Utils.escapeHtml(transfer.transitDuration || transfer.durationText || 'Duration varies')}</div>`
           }
         </div>
 
-        ${bike ? `<div class="transfer-mode-section${sel === 'bike' ? ' selected' : ''}" data-mode="bike" onclick="Components.selectTransferMode(${index}, 'bike')">
+        ${bike ? `<div class="transfer-mode-section${sel === 'bike' ? ' selected' : ''}" data-mode="bike" role="radio" tabindex="0" aria-checked="${sel === 'bike'}" aria-label="Bicycle transfer" onclick="Components.selectTransferMode(${index}, 'bike')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
           <div class="transfer-mode-header">
             <span class="transfer-mode-check">${sel === 'bike' ? '&#9679;' : '&#9675;'}</span>
             <span class="material-symbols-outlined" style="font-size:18px">pedal_bike</span> <strong>Bicycle</strong>
             <span class="transfer-mode-cost">Free</span>
           </div>
-          <div class="transfer-mode-meta">${bike.duration} &middot; ${bike.distanceText || bike.distanceKm + ' km'}${bike.summary ? ' via ' + bike.summary : ''}</div>
+          <div class="transfer-mode-meta">${Utils.escapeHtml(bike.duration)} &middot; ${Utils.escapeHtml(bike.distanceText || bike.distanceKm + ' km')}${bike.summary ? ' via ' + Utils.escapeHtml(bike.summary) : ''}</div>
         </div>` : ''}
 
-        ${walk ? `<div class="transfer-mode-section${sel === 'walk' ? ' selected' : ''}" data-mode="walk" onclick="Components.selectTransferMode(${index}, 'walk')">
+        ${walk ? `<div class="transfer-mode-section${sel === 'walk' ? ' selected' : ''}" data-mode="walk" role="radio" tabindex="0" aria-checked="${sel === 'walk'}" aria-label="Walking transfer" onclick="Components.selectTransferMode(${index}, 'walk')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
           <div class="transfer-mode-header">
             <span class="transfer-mode-check">${sel === 'walk' ? '&#9679;' : '&#9675;'}</span>
             <span class="material-symbols-outlined" style="font-size:18px">directions_walk</span> <strong>Walking</strong>
             <span class="transfer-mode-cost">Free</span>
           </div>
-          <div class="transfer-mode-meta">${walk.duration} &middot; ${walk.distanceText || walk.distanceKm + ' km'}</div>
+          <div class="transfer-mode-meta">${Utils.escapeHtml(walk.duration)} &middot; ${Utils.escapeHtml(walk.distanceText || walk.distanceKm + ' km')}</div>
         </div>` : ''}
       </div>
     `;
@@ -257,7 +257,7 @@ const Components = {
         const isSelected = sec.dataset.mode === mode;
         sec.classList.toggle('selected', isSelected);
         const check = sec.querySelector('.transfer-mode-check');
-        if (check) check.innerHTML = isSelected ? '&#9679;' : '&#9675;';
+        if (check) check.textContent = isSelected ? '\u25CF' : '\u25CB';
       });
       // Update header cost
       const costEl = card.querySelector(`#transfer-cost-${transferIndex}`);
@@ -361,20 +361,20 @@ const Components = {
     }
 
     return `
-      <div class="flight-option${isSelected ? ' selected' : ''}" onclick="Components.selectTransitOption(${legIndex}, ${routeIndex})" data-route-idx="${routeIndex}">
+      <div class="flight-option${isSelected ? ' selected' : ''}" role="button" tabindex="0" aria-label="Select transit option ${routeIndex + 1}" onclick="Components.selectTransitOption(${legIndex}, ${routeIndex})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" data-route-idx="${routeIndex}">
         <div class="flight-option-airline">
           <div class="airline-logo" style="background:var(--color-primary)"><span class="material-symbols-outlined" style="font-size:16px;color:#fff">directions_transit</span></div>
           <span class="airline-name">Transit</span>
         </div>
         <div class="flight-option-route">
           <div class="flight-option-times">
-            <span class="dep-time">${route.departureTime || ''}</span>
+            <span class="dep-time">${Utils.escapeHtml(route.departureTime || '')}</span>
             <div class="flight-option-duration">
-              <span class="duration-text">${route.duration}</span>
+              <span class="duration-text">${Utils.escapeHtml(route.duration)}</span>
               <div class="duration-line"></div>
-              <span class="stops-text">${transitSteps.length > 1 ? transitSteps.length + ' legs' : (route.summary || 'Transit')}</span>
+              <span class="stops-text">${transitSteps.length > 1 ? transitSteps.length + ' legs' : Utils.escapeHtml(route.summary || 'Transit')}</span>
             </div>
-            <span class="arr-time">${route.arrivalTime || ''}</span>
+            <span class="arr-time">${Utils.escapeHtml(route.arrivalTime || '')}</span>
           </div>
         </div>
         <div class="flight-option-price">
@@ -437,7 +437,7 @@ const Components = {
       if (remaining.length > 0) {
         const moreRows = remaining.map((r, ri) => this._buildTransitOptionRow(r, legIndex, ri + 1, false)).join('');
         moreHtml = `
-          <div class="flight-more-toggle" onclick="Components.toggleMoreOptions(this)">
+          <div class="flight-more-toggle" role="button" tabindex="0" aria-expanded="false" onclick="Components.toggleMoreOptions(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
             <span class="material-symbols-outlined" style="font-size:16px">expand_more</span> ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
           </div>
           <div class="flight-more-list">${moreRows}</div>
@@ -455,8 +455,8 @@ const Components = {
         <div class="ground-route-summary">
           <div class="ground-route-icon"><span class="material-symbols-outlined">directions_car</span></div>
           <div class="ground-route-info">
-            <div class="route-label">Drive${d.summary ? ' via ' + d.summary : ''}</div>
-            <div class="route-meta">${d.duration} &middot; ~${Math.round(d.distanceKm)} km</div>
+            <div class="route-label">Drive${d.summary ? ' via ' + Utils.escapeHtml(d.summary) : ''}</div>
+            <div class="route-meta">${Utils.escapeHtml(d.duration)} &middot; ~${Math.round(d.distanceKm)} km</div>
           </div>
           <div class="ground-route-cost">
             <span class="cost-amount">${Utils.formatCurrency(d.taxiCost || 0, 'EUR')}</span>
@@ -472,7 +472,7 @@ const Components = {
           <div class="ground-route-icon"><span class="material-symbols-outlined">directions_walk</span></div>
           <div class="ground-route-info">
             <div class="route-label">Walk</div>
-            <div class="route-meta">${w.duration} &middot; ${w.distanceText || (Math.round(w.distanceKm) + ' km')}</div>
+            <div class="route-meta">${Utils.escapeHtml(w.duration)} &middot; ${Utils.escapeHtml(w.distanceText || (Math.round(w.distanceKm) + ' km'))}</div>
           </div>
           <div class="ground-route-cost"><span class="cost-amount">Free</span></div>
         </div>
@@ -485,7 +485,7 @@ const Components = {
           <div class="ground-route-icon"><span class="material-symbols-outlined">pedal_bike</span></div>
           <div class="ground-route-info">
             <div class="route-label">Bicycle</div>
-            <div class="route-meta">${b.duration} &middot; ${b.distanceText || (Math.round(b.distanceKm) + ' km')}</div>
+            <div class="route-meta">${Utils.escapeHtml(b.duration)} &middot; ${Utils.escapeHtml(b.distanceText || (Math.round(b.distanceKm) + ' km'))}</div>
           </div>
           <div class="ground-route-cost"><span class="cost-amount">Free</span></div>
         </div>
@@ -498,6 +498,9 @@ const Components = {
     const leg = Results.plan?.flightLegs?.[legIndex];
     if (!leg) return;
     leg.selectedMode = mode;
+    // Show loading state on the flight card while recalculating
+    const card = document.querySelector(`.timeline-card[data-type="flight"][data-index="${legIndex}"]`);
+    if (card) card.classList.add('card-loading');
     // Recalculate adjacent transfers (airport vs city center routing)
     await Results._recalcTransfersForMode(legIndex);
     // Re-render full timeline (transfers + schedule times all update)
@@ -596,7 +599,7 @@ const Components = {
     if (remaining.length > 0) {
       const moreRows = remaining.map((offer, oi) => this._buildFlightOptionRow(offer, index, oi + 1, (oi + 1) === selectedOfferIdx)).join('');
       moreHtml = `
-        <div class="flight-more-toggle" onclick="Components.toggleMoreOptions(this)">
+        <div class="flight-more-toggle" role="button" tabindex="0" aria-expanded="false" onclick="Components.toggleMoreOptions(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
           <span class="material-symbols-outlined" style="font-size:16px">expand_more</span> ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
         </div>
         <div class="flight-more-list">${moreRows}</div>
@@ -619,7 +622,7 @@ const Components = {
     card.innerHTML = `
       <div class="route-card-grid">
         <div class="route-card-from">
-          <span class="route-card-code airport-select" onclick="event.stopPropagation(); Results.showAirportPicker(${index}, 'from')" title="Change departure airport">${Utils.escapeHtml(fromCode)}</span>
+          <span class="route-card-code airport-select" role="button" tabindex="0" onclick="event.stopPropagation(); Results.showAirportPicker(${index}, 'from')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" title="Change departure airport" aria-label="Change departure airport from ${Utils.escapeHtml(fromCode)}">${Utils.escapeHtml(fromCode)}</span>
           <span class="route-card-city">${Utils.escapeHtml(leg.fromCityName || leg.fromName || leg.from)}</span>
         </div>
         <div class="route-card-via">
@@ -628,7 +631,7 @@ const Components = {
           <span class="route-card-via-label">${Utils.escapeHtml(viaLabel)}</span>
         </div>
         <div class="route-card-to">
-          <span class="route-card-code airport-select" onclick="event.stopPropagation(); Results.showAirportPicker(${index}, 'to')" title="Change arrival airport">${Utils.escapeHtml(toCode)}</span>
+          <span class="route-card-code airport-select" role="button" tabindex="0" onclick="event.stopPropagation(); Results.showAirportPicker(${index}, 'to')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" title="Change arrival airport" aria-label="Change arrival airport from ${Utils.escapeHtml(toCode)}">${Utils.escapeHtml(toCode)}</span>
           <span class="route-card-city">${Utils.escapeHtml(leg.toCityName || leg.toName || leg.to)}</span>
         </div>
       </div>
@@ -659,17 +662,17 @@ const Components = {
     } else {
       const layoverDetail = offer.layovers?.map(l => {
         const dur = l.durationText || '';
-        return dur ? `${dur} ${l.airportCode}` : l.airportCode;
+        return dur ? `${Utils.escapeHtml(dur)} ${Utils.escapeHtml(l.airportCode)}` : Utils.escapeHtml(l.airportCode);
       }).join(', ') || '';
       stopsText = `${offer.stops} stop${offer.stops > 1 ? 's' : ''}`;
       if (layoverDetail) stopsText += ` · ${layoverDetail}`;
     }
 
     return `
-      <div class="flight-option${isSelected ? ' selected' : ''}" onclick="Components.selectFlightOption(${legIndex}, ${offerIndex})" data-offer-idx="${offerIndex}">
+      <div class="flight-option${isSelected ? ' selected' : ''}" role="button" tabindex="0" aria-label="Select ${Utils.escapeHtml(airlineName)} flight, ${Utils.escapeHtml(priceLabel)}" onclick="Components.selectFlightOption(${legIndex}, ${offerIndex})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" data-offer-idx="${offerIndex}">
         <div class="flight-option-airline">
           ${offer.airlineLogo
-            ? `<img class="airline-logo-img" src="${Utils.escapeHtml(offer.airlineLogo)}" alt="${Utils.escapeHtml(airlineCode)}" onerror="this.outerHTML='<div class=\\'airline-logo\\' style=\\'background:${color}\\'>${airlineCode.slice(0, 2)}</div>'">`
+            ? `<img class="airline-logo-img" src="${Utils.escapeHtml(offer.airlineLogo)}" alt="${Utils.escapeHtml(airlineCode)}" loading="lazy" onerror="this.outerHTML='<div class=\\'airline-logo\\' style=\\'background:${color}\\'>${airlineCode.slice(0, 2)}</div>'">`
             : `<div class="airline-logo" style="background:${color}">${airlineCode.slice(0, 2)}</div>`}
           <span class="airline-name">${Utils.escapeHtml(airlineName)}</span>
         </div>
@@ -684,7 +687,7 @@ const Components = {
             <span class="arr-time">${Utils.formatTime(offer.arrival)}</span>
           </div>
           <div class="flight-option-codes">
-            <span>${fromCode}–${toCode}</span>
+            <span>${Utils.escapeHtml(fromCode)}–${Utils.escapeHtml(toCode)}</span>
           </div>
         </div>
         <div class="flight-option-price">
@@ -702,11 +705,11 @@ const Components = {
         ${offer.layovers.filter(l => l.mealCost && l.mealCost.cost > 0).map(l => `
           <div class="layover-meal-row">
             <div class="layover-meal-info">
-              <span class="layover-airport">${l.airportCode}</span>
-              <span class="layover-duration">${l.durationText} layover</span>
+              <span class="layover-airport">${Utils.escapeHtml(l.airportCode)}</span>
+              <span class="layover-duration">${Utils.escapeHtml(l.durationText)} layover</span>
             </div>
             <div class="layover-meal-detail">
-              <span>${l.mealCost.description}</span>
+              <span>${Utils.escapeHtml(l.mealCost.description)}</span>
               <span class="layover-meal-cost">${Utils.formatCurrency(l.mealCost.cost, 'EUR')}/person</span>
               ${l.mealCost.source ? `<span class="confidence-badge default">${l.mealCost.source.includes('airport') ? 'airport data' : 'estimate'}</span>` : ''}
             </div>
@@ -756,6 +759,7 @@ const Components = {
     if (!list) return;
     const isVisible = list.classList.contains('expanded');
     list.classList.toggle('expanded');
+    toggleEl.setAttribute('aria-expanded', String(!isVisible));
     toggleEl.innerHTML = isVisible
       ? `<span class="material-symbols-outlined" style="font-size:16px">expand_more</span> ${list.children.length} more option${list.children.length > 1 ? 's' : ''}`
       : `<span class="material-symbols-outlined" style="font-size:16px">expand_less</span> hide options`;
@@ -807,7 +811,7 @@ const Components = {
     }
 
     return `
-      <div class="hotel-option${isSelected ? ' selected' : ''}" onclick="Results.selectHotelOption(${cityIndex}, ${optionIndex})">
+      <div class="hotel-option${isSelected ? ' selected' : ''}" role="button" tabindex="0" aria-label="Select ${Utils.escapeHtml(hotel.name)}" onclick="Results.selectHotelOption(${cityIndex}, ${optionIndex})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
         ${photoHtml}
         <div class="hotel-option-info">
           <div class="hotel-option-name"><span class="hotel-option-name-text">${Utils.escapeHtml(hotel.name || 'Hotel')}</span>${linkHtml}${mapsHtml}</div>
@@ -946,7 +950,7 @@ const Components = {
             return this._buildHotelOptionRow(h, index, idx, h.hotelId === selectedId, city);
           }).join('');
           moreHtml = `
-            <div class="hotel-more-toggle" onclick="Components.toggleMoreOptions(this)">
+            <div class="hotel-more-toggle" role="button" tabindex="0" aria-expanded="false" onclick="Components.toggleMoreOptions(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
               <span class="material-symbols-outlined" style="font-size:16px">expand_more</span> ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
             </div>
             <div class="hotel-more-list">${moreRows}</div>
@@ -995,7 +999,7 @@ const Components = {
     const headerMeta = [sel.distance ? `${sel.distance.toFixed(1)} km` : '', sel.roomType || ''].filter(Boolean).join(' \u00b7 ');
 
     card.innerHTML = `
-      <div class="city-card-header" onclick="Components.toggleCard(this)">
+      <div class="city-card-header" role="button" tabindex="0" aria-expanded="false" onclick="Components.toggleCard(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
         ${headerPhotoHtml}
         <div class="city-card-info">
           <h4>${Utils.escapeHtml(hotelNameDisplay)} ${headerLinkHtml}${headerMapsHtml}</h4>
@@ -1052,7 +1056,7 @@ const Components = {
       if (remaining.length > 0) {
         const moreRows = remaining.map((r, ri) => this._buildTransitOptionRow(r, index, ri + 1, false)).join('');
         moreHtml = `
-          <div class="flight-more-toggle" onclick="Components.toggleMoreOptions(this)">
+          <div class="flight-more-toggle" role="button" tabindex="0" aria-expanded="false" onclick="Components.toggleMoreOptions(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
             <span class="material-symbols-outlined" style="font-size:16px">expand_more</span> ${remaining.length} more option${remaining.length > 1 ? 's' : ''}
           </div>
           <div class="flight-more-list">${moreRows}</div>
@@ -1078,7 +1082,7 @@ const Components = {
         <div class="route-card-footer">
           <div class="route-card-footer-left">
             <span class="material-symbols-outlined footer-icon">schedule</span>
-            <span>${durationText} &middot; ${Utils.formatDateShort(leg.date)}</span>
+            <span>${Utils.escapeHtml(durationText)} &middot; ${Utils.formatDateShort(leg.date)}</span>
           </div>
           <span class="card-cost">${Utils.formatCurrency(costPerPerson, 'EUR')}</span>
         </div>
@@ -1087,7 +1091,7 @@ const Components = {
       `;
     } else {
       card.innerHTML = `
-        <div class="route-card-grid" onclick="Components.toggleCard(this)">
+        <div class="route-card-grid" role="button" tabindex="0" aria-expanded="false" onclick="Components.toggleCard(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
           <div class="route-card-from">
             <span class="route-card-code">${Utils.escapeHtml(fromCode)}</span>
             <span class="route-card-city">${Utils.escapeHtml(leg.fromName || leg.from)}</span>
@@ -1105,7 +1109,7 @@ const Components = {
         <div class="route-card-footer">
           <div class="route-card-footer-left">
             <span class="material-symbols-outlined footer-icon">schedule</span>
-            <span>${durationText} &middot; ${Utils.formatDateShort(leg.date)}</span>
+            <span>${Utils.escapeHtml(durationText)} &middot; ${Utils.formatDateShort(leg.date)}</span>
           </div>
           <span class="card-cost">${Utils.formatCurrency(costPerPerson, 'EUR')}<br>
             <span style="font-size:0.72rem;font-weight:400;color:var(--color-text-secondary)">per person</span>
@@ -1118,7 +1122,7 @@ const Components = {
           </div>
           <div class="card-detail-row">
             <span class="card-detail-label">Duration</span>
-            <span class="card-detail-value">${transit.duration || 'Varies'}</span>
+            <span class="card-detail-value">${Utils.escapeHtml(transit.duration || 'Varies')}</span>
           </div>
           <div class="card-detail-row">
             <span class="card-detail-label">Distance</span>
@@ -1193,7 +1197,7 @@ const Components = {
       step.id = `loading-step-${i}`;
       step.innerHTML = `
         <span class="loading-step-icon"><span class="material-symbols-outlined">radio_button_unchecked</span></span>
-        <span>${text}</span>
+        <span>${Utils.escapeHtml(text)}</span>
       `;
       container.appendChild(step);
     });

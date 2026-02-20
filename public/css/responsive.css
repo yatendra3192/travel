@@ -148,6 +148,27 @@
   }
 }
 
+/* Header destination chips: horizontal scroll on small screens */
+@media (max-width: 768px) {
+  .header-dest-row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .header-dest-row::-webkit-scrollbar {
+    display: none;
+  }
+  .header-chips {
+    flex-wrap: nowrap;
+    min-width: 0;
+  }
+  .header-chips .chip {
+    flex-shrink: 0;
+  }
+}
+
 @media (max-width: 480px) {
   .landing-header h1 {
     font-size: 1.3rem;
@@ -241,6 +262,34 @@
     padding: 8px 16px;
     font-size: 0.8rem;
   }
+
+  /* Reduce bottom bar height on small screens */
+  .results-layout {
+    padding-bottom: 90px;
+  }
+
+  .cost-bottom-mini {
+    display: none;
+  }
+
+  .cost-bottom-perp {
+    font-size: 0.62rem;
+  }
+}
+
+/* Prevent horizontal overflow on all cards */
+.timeline-card,
+.itinerary-segment-row,
+.skeleton-card {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  min-width: 0;
+}
+
+/* Ensure cards don't cause horizontal scroll */
+.results-timeline,
+#itinerary-grid {
+  overflow-x: hidden;
 }
 
 /* Safe area support for bottom bars */
@@ -255,6 +304,11 @@
 
   .results-layout {
     padding-bottom: calc(120px + env(safe-area-inset-bottom));
+  }
+
+  /* Bottom sheet also needs safe area */
+  .bottom-sheet-peek {
+    padding-bottom: env(safe-area-inset-bottom);
   }
 }
 
@@ -399,5 +453,87 @@
 
   .via-label.buffer-label {
     font-size: 0.48rem;
+  }
+}
+
+/* ── Print styles ── */
+@media print {
+  body {
+    background: #fff !important;
+    color: #111 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  #landing-page,
+  .loading-overlay,
+  .cost-bottom-bar,
+  .mobile-cost-bar,
+  .results-header .btn-back,
+  .results-header .btn-share,
+  .results-header .btn-recalculate,
+  .bg-photo-overlay,
+  .add-activity-row,
+  .seg-remove-btn {
+    display: none !important;
+  }
+
+  .results-header {
+    position: static !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding-bottom: 16px;
+    border-bottom: 2px solid #ddd !important;
+  }
+
+  .results-layout {
+    max-width: 100% !important;
+    padding: 0 !important;
+  }
+
+  .timeline-card,
+  .itinerary-segment-row,
+  .day-header {
+    break-inside: avoid;
+    background: #fff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #ddd !important;
+    box-shadow: none !important;
+    color: #111 !important;
+  }
+
+  .timeline-card:hover {
+    transform: none !important;
+  }
+
+  .cost-sidebar {
+    display: block !important;
+    width: 100% !important;
+    position: static !important;
+  }
+
+  .cost-card {
+    background: #f8f8f8 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #ddd !important;
+    color: #111 !important;
+  }
+
+  .card-cost,
+  .seg-cost,
+  .day-cost,
+  .price-amount {
+    color: #0a7a7a !important;
+  }
+
+  .cost-line-label,
+  .card-detail-label,
+  .card-subtitle {
+    color: #555 !important;
   }
 }

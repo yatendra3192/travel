@@ -1,5 +1,6 @@
 const Utils = {
   displayCurrency: 'INR',
+  _formatters: {},
 
   // Rates relative to EUR (1 EUR = X units)
   EXCHANGE_RATES: {
@@ -20,17 +21,16 @@ const Utils = {
   formatCurrency(amount, sourceCurrency = 'EUR') {
     if (amount == null || isNaN(amount)) return '--';
     const display = this.displayCurrency;
-    // Convert from source to display currency
-    if (!this.EXCHANGE_RATES[sourceCurrency]) console.warn('Unknown currency code:', sourceCurrency);
-    if (!this.EXCHANGE_RATES[display]) console.warn('Unknown currency code:', display);
     const fromRate = this.EXCHANGE_RATES[sourceCurrency] || 1;
     const toRate = this.EXCHANGE_RATES[display] || 1;
     const converted = amount * (toRate / fromRate);
-    const opts = { style: 'currency', currency: display, maximumFractionDigits: 0 };
-    if (display === 'INR') {
-      return new Intl.NumberFormat('en-IN', opts).format(converted);
+    // Cache Intl.NumberFormat instances for performance
+    const locale = display === 'INR' ? 'en-IN' : 'en-US';
+    const key = `${locale}:${display}`;
+    if (!this._formatters[key]) {
+      this._formatters[key] = new Intl.NumberFormat(locale, { style: 'currency', currency: display, maximumFractionDigits: 0 });
     }
-    return new Intl.NumberFormat('en-US', opts).format(converted);
+    return this._formatters[key].format(converted);
   },
 
   formatCurrencyRange(low, high, sourceCurrency = 'EUR') {
