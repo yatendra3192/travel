@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
@@ -7,6 +8,9 @@ const { getCached, setCache } = require('./cache');
 // iata-data.js no longer used — AirLabs API handles airport resolution dynamically
 const { getLayoverMealCost, getCityMealCosts } = require('./meal-data');
 const rateLimit = require('express-rate-limit');
+const { scrapeFlights } = require('./scraper/flights-scraper');
+const { scrapeHotels } = require('./scraper/hotels-scraper');
+const { shutdown: shutdownBrowserPool } = require('./scraper/browser-pool');
 
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 if (!GOOGLE_API_KEY) {
@@ -650,15 +654,49 @@ app.get('/api/flights', async (req, res) => {
       }
     }
 
-    // Try SerpApi — one call searches all airport combinations
+    const depId = allOrigins.join(',');
+    const arrId = allDests.join(',');
+    const primaryOnly = origin.toUpperCase();
+    const primaryDest = destination.toUpperCase();
+
+    // Check cache first (shared key format so scraper and SerpApi don't duplicate)
+    const flightCacheKey = `flights:${depId}-${arrId}-${date}-${numAdults}-${numChildren}-${userCurrency}`;
+    const cachedFlights = getCached(flightCacheKey);
+    if (cachedFlights) {
+      console.log(`[flights] [${req.id}] Cache hit: ${cachedFlights.flights.length} flights`);
+      return res.json(cachedFlights);
+    }
+
+    // 1. Try Puppeteer scraper first
+    try {
+      console.log(`[flights] [${req.id}] Scraper: ${primaryOnly}->${primaryDest} on ${date} (${userCurrency})`);
+      const data = await scrapeFlights(primaryOnly, primaryDest, date, userCurrency);
+      if (data.flights.length > 0) {
+        // Convert prices from detected page currency to EUR
+        const pageCurrency = data.detectedCurrency || userCurrency;
+        for (const f of data.flights) {
+          f.price = round2(convertToEurFrontend(f.price, pageCurrency));
+          f.currency = 'EUR';
+        }
+        delete data.detectedCurrency;
+        data.flights.sort((a, b) => a.price - b.price);
+        console.log(`[flights] [${req.id}] Scraper returned ${data.flights.length} flights (page currency: ${pageCurrency})`);
+        setCache(flightCacheKey, data, 30 * 60 * 1000);
+        return res.json(data);
+      }
+      console.log(`[flights] [${req.id}] Scraper returned 0 flights`);
+    } catch (scrapeErr) {
+      console.warn(`[flights] [${req.id}] Scraper failed: ${scrapeErr.message}`);
+    }
+
+    // 2. Fallback to SerpApi if key is configured
     if (SERPAPI_KEY) {
-      const depId = allOrigins.join(',');
-      const arrId = allDests.join(',');
       try {
-        console.log(`[flights] [${req.id}] SerpApi: ${depId}->${arrId} on ${date} (${userCurrency})`);
+        console.log(`[flights] [${req.id}] SerpApi fallback: ${depId}->${arrId} on ${date} (${userCurrency})`);
         const data = await searchFlightsSerpApi(depId, arrId, date, numAdults, numChildren, userCurrency);
         if (data.flights.length > 0) {
           console.log(`[flights] [${req.id}] SerpApi returned ${data.flights.length} flights`);
+          setCache(flightCacheKey, data, 30 * 60 * 1000);
           return res.json(data);
         }
         console.log(`[flights] [${req.id}] SerpApi returned 0 flights`);
@@ -667,14 +705,13 @@ app.get('/api/flights', async (req, res) => {
       }
 
       // Retry with primary airports only if multi-airport search failed
-      const primaryOnly = origin.toUpperCase();
-      const primaryDest = destination.toUpperCase();
       if (depId !== primaryOnly || arrId !== primaryDest) {
         try {
           console.log(`[flights] [${req.id}] SerpApi retry (primary only): ${primaryOnly}->${primaryDest} on ${date}`);
           const data = await searchFlightsSerpApi(primaryOnly, primaryDest, date, numAdults, numChildren, userCurrency);
           if (data.flights.length > 0) {
             console.log(`[flights] [${req.id}] SerpApi retry returned ${data.flights.length} flights`);
+            setCache(flightCacheKey, data, 30 * 60 * 1000);
             return res.json(data);
           }
         } catch (retryErr) {
@@ -797,10 +834,48 @@ app.get('/api/hotels/search-by-name', async (req, res) => {
     const numAdults = parseInt(adults) || 1;
     const userCurrency = (currency && /^[A-Z]{3}$/i.test(currency)) ? currency.toUpperCase() : 'EUR';
 
-    console.log(`[hotels/search] SerpApi: "${query}" ${checkIn}-${checkOut} (${userCurrency})`);
-    const data = await searchHotelsSerpApi(query, checkIn, checkOut, numAdults, userCurrency);
-    console.log(`[hotels/search] SerpApi returned ${data.hotels.length} hotels`);
-    res.json(data);
+    // Check cache first
+    const hotelCacheKey = `hotels:${query.toLowerCase()}-${checkIn}-${checkOut}-${numAdults}-${userCurrency}`;
+    const cachedHotels = getCached(hotelCacheKey);
+    if (cachedHotels) {
+      console.log(`[hotels/search] Cache hit: ${cachedHotels.hotels.length} hotels`);
+      return res.json(cachedHotels);
+    }
+
+    // 1. Try Puppeteer scraper first
+    let scraperResult = null;
+    try {
+      console.log(`[hotels/search] Scraper: "${query}" ${checkIn}-${checkOut} (${userCurrency})`);
+      scraperResult = await scrapeHotels(query, checkIn, checkOut, userCurrency);
+      if (scraperResult.hotels.length > 0) {
+        // Convert prices from detected page currency to EUR
+        const pageCurrency = scraperResult.detectedCurrency || userCurrency;
+        for (const h of scraperResult.hotels) {
+          h.pricePerNight = round2(convertToEurFrontend(h.pricePerNight, pageCurrency));
+        }
+        delete scraperResult.detectedCurrency;
+        console.log(`[hotels/search] Scraper returned ${scraperResult.hotels.length} hotels (page currency: ${pageCurrency})`);
+        setCache(hotelCacheKey, scraperResult, 30 * 60 * 1000);
+        return res.json(scraperResult);
+      }
+      console.log('[hotels/search] Scraper returned 0 hotels');
+    } catch (scrapeErr) {
+      console.warn(`[hotels/search] Scraper failed: ${scrapeErr.message}`);
+    }
+
+    // 2. Fallback to SerpApi if key is configured
+    if (SERPAPI_KEY) {
+      console.log(`[hotels/search] SerpApi fallback: "${query}" ${checkIn}-${checkOut} (${userCurrency})`);
+      const data = await searchHotelsSerpApi(query, checkIn, checkOut, numAdults, userCurrency);
+      console.log(`[hotels/search] SerpApi returned ${data.hotels.length} hotels`);
+      if (data.hotels.length > 0) {
+        setCache(hotelCacheKey, data, 30 * 60 * 1000);
+      }
+      return res.json(data);
+    }
+
+    // Both failed — return empty
+    res.json({ hotels: [] });
   } catch (err) {
     console.error('hotels/search-by-name error:', err.message);
     res.status(502).json({ hotels: [], error: 'Hotel search temporarily unavailable.' });
@@ -1125,7 +1200,7 @@ app.post('/api/itinerary/generate', async (req, res) => {
         messages: [
           {
             role: 'system',
-            content: 'You are a travel itinerary planner. For each city, suggest activities organized by day. Return JSON: { "days": [{ "city": "CityName", "dayNumber": 1, "activities": [{ "name": "...", "duration": "1.5 hours", "entryFee": 16, "category": "museum", "description": "..." }]}]}. Include a mix: museum, landmark, food, park, shopping, cultural. Keep realistic for one day (4-6 hours total).',
+            content: 'You are a travel itinerary planner. For each city, suggest activities organized by day. Return JSON: { "days": [{ "city": "CityName", "dayNumber": 1, "activities": [{ "name": "...", "duration": "1.5 hours", "entryFee": 16, "category": "museum", "description": "..." }]}]}. IMPORTANT: The "city" field in each day MUST use the EXACT city name as provided in the user message — do not correct spelling or use alternate names. Include a mix: museum, landmark, food, park, shopping, cultural. Keep realistic for one day (4-6 hours total).',
           },
           { role: 'user', content: userMessage },
         ],
@@ -1251,4 +1326,16 @@ app.get('*', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
   console.log(`Trip Cost Calculator running at http://localhost:${PORT}`);
+});
+
+// Graceful shutdown — close browser pool
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down...');
+  await shutdownBrowserPool();
+  process.exit(0);
+});
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down...');
+  await shutdownBrowserPool();
+  process.exit(0);
 });

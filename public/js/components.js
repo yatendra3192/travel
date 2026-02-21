@@ -669,7 +669,7 @@ const Components = {
     }
 
     return `
-      <div class="flight-option${isSelected ? ' selected' : ''}" role="button" tabindex="0" aria-label="Select ${Utils.escapeHtml(airlineName)} flight, ${Utils.escapeHtml(priceLabel)}" onclick="Components.selectFlightOption(${legIndex}, ${offerIndex})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" data-offer-idx="${offerIndex}">
+      <div class="flight-option${isSelected ? ' selected' : ''}" role="button" tabindex="0" aria-label="Select ${Utils.escapeHtml(airlineName)} flight, ${Utils.formatCurrency(offer.price, offer.currency || 'EUR')}" onclick="Components.selectFlightOption(${legIndex}, ${offerIndex})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" data-offer-idx="${offerIndex}">
         <div class="flight-option-airline">
           ${offer.airlineLogo
             ? `<img class="airline-logo-img" src="${Utils.escapeHtml(offer.airlineLogo)}" alt="${Utils.escapeHtml(airlineCode)}" loading="lazy" onerror="this.outerHTML='<div class=\\'airline-logo\\' style=\\'background:${color}\\'>${airlineCode.slice(0, 2)}</div>'">`

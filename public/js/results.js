@@ -538,7 +538,7 @@ const Results = {
           for (const act of day.activities) {
             const city = day.city || '';
             const cityObj = this.plan.cities.find(c =>
-              c.name.toLowerCase().includes(city.toLowerCase()) || city.toLowerCase().includes(c.name.toLowerCase())
+              Utils.fuzzyMatchCity(c.name, city)
             );
             placePromises.push(
               Api.resolvePlace(act.name, city, cityObj?.lat, cityObj?.lng)
@@ -568,7 +568,7 @@ const Results = {
           if (!day.activities || day.activities.length === 0) continue;
           const city = day.city || '';
           const cityObj = this.plan.cities.find(c =>
-            c.name.toLowerCase().includes(city.toLowerCase()) || city.toLowerCase().includes(c.name.toLowerCase())
+            Utils.fuzzyMatchCity(c.name, city)
           );
           if (!cityObj) continue;
 
@@ -1038,6 +1038,42 @@ const Results = {
 
     // Transfer 0: home → airport (skip if type 'none')
     const t0 = plan.transfers[0];
+    const firstLeg = plan.flightLegs[0];
+
+    // Work backwards from the first leg's departure to compute home leave time
+    if (firstLeg && firstLeg.legType !== 'skip') {
+      const transferMins = (t0 && t0.type !== 'none') ? Utils.parseDurationMins(t0.durationText) : 0;
+      const isRealFlight = (!firstLeg.selectedMode || firstLeg.selectedMode === 'flight') && firstLeg.legType !== 'train';
+
+      if (isRealFlight && firstLeg.selectedOffer?.departure) {
+        // Flight: leave = departure - 2h security - transfer
+        const flightDep = new Date(firstLeg.selectedOffer.departure);
+        cursor = Utils.addMinutesToDate(flightDep, -(120 + transferMins));
+      } else if (firstLeg.selectedOffer?.departure) {
+        // Train/ground with known departure: leave = departure - transfer
+        const dep = new Date(firstLeg.selectedOffer.departure);
+        cursor = Utils.addMinutesToDate(dep, -transferMins);
+      } else {
+        // No departure time: estimate from leg duration + transfer
+        let legDurMins = 0;
+        if (firstLeg.legType === 'train' && firstLeg.trainRoutes?.transitRoutes?.[0]?.durationSec) {
+          legDurMins = Math.round(firstLeg.trainRoutes.transitRoutes[0].durationSec / 60);
+        } else if (firstLeg.selectedMode && firstLeg.selectedMode !== 'flight' && firstLeg.groundRoutes) {
+          const mode = firstLeg.selectedMode;
+          const durSec = (mode === 'transit' ? firstLeg.groundRoutes.transitRoutes?.[0]?.durationSec :
+                         mode === 'drive' ? firstLeg.groundRoutes.driving?.durationSec :
+                         mode === 'walk' ? firstLeg.groundRoutes.walking?.durationSec :
+                         mode === 'bike' ? firstLeg.groundRoutes.bicycling?.durationSec : 0) || 0;
+          legDurMins = Math.round(durSec / 60);
+        }
+        // Default to 8 AM arrival at destination, work backwards
+        if (legDurMins > 0) {
+          const arriveBy = new Date(`${plan.departureDate}T08:00:00`);
+          cursor = Utils.addMinutesToDate(arriveBy, -(legDurMins + transferMins + (isRealFlight ? 120 : 0)));
+        }
+      }
+    }
+
     if (t0 && t0.type !== 'none') {
       t0.scheduleStart = new Date(cursor);
       cursor = Utils.addMinutesToDate(cursor, Utils.parseDurationMins(t0.durationText));
@@ -1191,7 +1227,7 @@ const Results = {
     async function liveTransfer(fromLabel, toLabel, type, oLat, oLng, dLat, dLng, country, originText, destText) {
       if (oLat && oLng && dLat && dLng) {
         // Sanity check: straight-line distance between coords
-        const straightKm = haversineKmClient(oLat, oLng, dLat, dLng);
+        const straightKm = Utils.haversineKm(oLat, oLng, dLat, dLng);
         // Max reasonable driving distance: 3x straight-line or 300km, whichever is larger
         const maxReasonableKm = Math.max(straightKm * 3, 300);
         try {
@@ -1228,7 +1264,7 @@ const Results = {
       }
       // Fallback: rough estimate from straight-line distance
       const distKm = (oLat && oLng && dLat && dLng)
-        ? Math.round(haversineKmClient(oLat, oLng, dLat, dLng))
+        ? Math.round(Utils.haversineKm(oLat, oLng, dLat, dLng))
         : 30;
       return {
         from: fromLabel,

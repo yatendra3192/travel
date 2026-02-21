@@ -15,11 +15,7 @@ const Itinerary = {
     // For each city
     for (let ci = 0; ci < plan.cities.length; ci++) {
       const city = plan.cities[ci];
-      const cityActivities = aiResult?.days?.filter(d => {
-        const dCity = (d.city || '').toLowerCase();
-        const pCity = (city.name || '').toLowerCase();
-        return dCity === pCity || pCity.includes(dCity) || dCity.includes(pCity);
-      }) || [];
+      const cityActivities = aiResult?.days?.filter(d => Utils.fuzzyMatchCity(d.city, city.name)) || [];
 
       // Activity days for this city
       for (let n = 0; n < city.nights; n++) {
@@ -274,7 +270,7 @@ const Itinerary = {
       mode,
       icon: this._modeIcon(mode),
       label: label || undefined,
-      duration: transfer.transitDuration || transfer.durationText || '',
+      duration: Utils.formatDurationShort(transfer.transitDuration || transfer.durationText) || '',
       cost: perTrip,
       sourceRef: `transfer:${transferIdx}`,
       startTime: transfer.scheduleStart || null,

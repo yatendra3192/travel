@@ -100,11 +100,22 @@ const Utils = {
   parseDurationMins(text) {
     if (!text) return 30;
     let mins = 0;
-    const h = text.match(/(\d+)\s*h/i);
+    const h = text.match(/(\d+)\s*h(?:our)?s?/i);
     const m = text.match(/(\d+)\s*m/i);
     if (h) mins += parseInt(h[1]) * 60;
     if (m) mins += parseInt(m[1]);
     return mins || 30;
+  },
+
+  formatDurationShort(text) {
+    if (!text) return '';
+    const mins = this.parseDurationMins(text);
+    if (!mins) return text;
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    if (h && m) return `${h}h ${m}m`;
+    if (h) return `${h}h`;
+    return `${m}m`;
   },
 
   addMinutesToDate(date, mins) {
@@ -124,6 +135,44 @@ const Utils = {
   sanitizeColor(c) {
     if (typeof c !== 'string') return 'inherit';
     return /^#[0-9a-fA-F]{3,8}$|^[a-zA-Z]+$|^rgba?\([\d\s,.]+\)$/.test(c) ? c : 'inherit';
+  },
+
+  // Fuzzy city name match — handles transliteration variants (Ahmedabad vs Ahamdabad)
+  fuzzyMatchCity(a, b) {
+    if (!a || !b) return false;
+    const na = a.toLowerCase().replace(/[^a-z]/g, '');
+    const nb = b.toLowerCase().replace(/[^a-z]/g, '');
+    if (na === nb) return true;
+    if (na.includes(nb) || nb.includes(na)) return true;
+    // Levenshtein distance ≤ 2 for similar-length names
+    if (Math.abs(na.length - nb.length) > 2) return false;
+    const len = Math.max(na.length, nb.length);
+    if (len < 3) return false;
+    let dist = 0;
+    const matrix = Array.from({ length: na.length + 1 }, (_, i) => {
+      const row = new Array(nb.length + 1);
+      row[0] = i;
+      return row;
+    });
+    for (let j = 0; j <= nb.length; j++) matrix[0][j] = j;
+    for (let i = 1; i <= na.length; i++) {
+      for (let j = 1; j <= nb.length; j++) {
+        const cost = na[i - 1] === nb[j - 1] ? 0 : 1;
+        matrix[i][j] = Math.min(matrix[i - 1][j] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j - 1] + cost);
+      }
+    }
+    dist = matrix[na.length][nb.length];
+    return dist <= 2;
+  },
+
+  haversineKm(lat1, lng1, lat2, lng2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   },
 
   // Extract arrival date (YYYY-MM-DD) from a flight offer's arrival ISO datetime
