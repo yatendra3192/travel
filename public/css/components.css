@@ -2917,20 +2917,24 @@
   background: linear-gradient(135deg, rgba(17, 212, 212, 0.1), rgba(17, 212, 212, 0.05));
   border: 1px solid rgba(17, 212, 212, 0.2);
   border-radius: var(--radius-glass-sm);
-  padding: 8px 12px;
+  padding: 12px 14px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
+  justify-content: flex-end;
+  gap: 4px;
+  min-height: 120px;
   transition: border-color var(--duration-fast);
   position: relative;
   overflow: hidden;
   background-size: cover;
   background-position: center;
+  text-align: center;
 }
 
 .activity-tile.has-photo {
   background-blend-mode: overlay;
-  background-color: rgba(10, 20, 30, 0.55);
+  background-color: rgba(10, 20, 30, 0.45);
 }
 
 .activity-tile.has-photo .seg-code,
@@ -2939,7 +2943,7 @@
 .activity-tile.has-photo .activity-tile-link {
   position: relative;
   z-index: 1;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
 }
 
 .activity-tile.has-photo .seg-code {
@@ -3012,21 +3016,7 @@
   color: var(--color-city-accent);
 }
 
-/* Activity reference (from column) */
-.activity-ref {
-  opacity: 0.6;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.activity-ref-thumb {
-  width: 20px;
-  height: 20px;
-  border-radius: 4px;
-  object-fit: cover;
-  flex-shrink: 0;
-}
+/* Activity reference (from column) — uses .activity-tile styles */
 
 .itinerary-segment-row.activity-row {
   cursor: grab;

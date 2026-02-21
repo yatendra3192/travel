@@ -20,7 +20,8 @@ const Itinerary = {
       // Activity days for this city
       for (let n = 0; n < city.nights; n++) {
         const dayActs = cityActivities[n]?.activities || [];
-        days.push(this._buildActivityDay(dayNum++, plan, ci, n, dayActs, placeData, transitData, segId));
+        const aiCityName = cityActivities[n]?.city || city.name;
+        days.push(this._buildActivityDay(dayNum++, plan, ci, n, dayActs, placeData, transitData, segId, aiCityName));
       }
 
       // Intercity travel day (if not last city)
@@ -315,11 +316,12 @@ const Itinerary = {
     };
   },
 
-  _buildActivityDay(dayNum, plan, cityIndex, dayOffset, activities, placeData, transitData, segId) {
+  _buildActivityDay(dayNum, plan, cityIndex, dayOffset, activities, placeData, transitData, segId, aiCityName) {
     const city = plan.cities[cityIndex];
     const segments = [];
     const hotelLabel = city.hotelName || `Hotel ${city.name}`;
     const hotelSublabel = `${city.nights} night${city.nights !== 1 ? 's' : ''}`;
+    const placeLookupCity = aiCityName || city.name;
 
     const hotelFrom = {
       label: 'HTL',
@@ -334,7 +336,7 @@ const Itinerary = {
     // Activities for this day
     for (let ai = 0; ai < activities.length; ai++) {
       const act = activities[ai];
-      const place = placeData?.[`${act.name}:${city.name}`];
+      const place = placeData?.[`${act.name}:${placeLookupCity}`] || placeData?.[`${act.name}:${city.name}`];
       const actTo = {
         label: act.name || 'Activity',
         sublabel: `${act.category || 'Attraction'}${act.entryFee ? ` · EUR ${act.entryFee}` : ''}`,
@@ -560,12 +562,13 @@ const Itinerary = {
         ${fromTimeHtml}
       </div>`;
     } else if (seg.from?.isActivity) {
-      const fromActThumb = seg.from.photoUrl
-        ? `<img class="activity-ref-thumb" src="${Utils.escapeHtml(seg.from.photoUrl)}" alt="">`
-        : `<span class="material-symbols-outlined" style="font-size:1rem;color:var(--color-city-accent)">place</span>`;
-      fromHtml = `<div class="seg-from activity-ref">
-        ${fromActThumb}
-        <span class="seg-sublabel">${Utils.escapeHtml(seg.from.label || 'Activity')}</span>
+      const fromHasPhoto = !!seg.from.photoUrl;
+      const fromBgStyle = fromHasPhoto
+        ? ` style="background-image: url('${Utils.escapeHtml(seg.from.photoUrl)}')"`
+        : '';
+      fromHtml = `<div class="seg-from activity-tile${fromHasPhoto ? ' has-photo' : ''}"${fromBgStyle}>
+        <span class="material-symbols-outlined activity-icon">place</span>
+        <span class="seg-code">${Utils.escapeHtml(seg.from.label || 'Activity')}</span>
         ${fromTimeHtml}
       </div>`;
     } else {

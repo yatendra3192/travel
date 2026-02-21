@@ -1258,7 +1258,7 @@ app.get('/api/places/resolve', async (req, res) => {
     const place = data.results[0];
     const photoRef = place.photos?.[0]?.photo_reference;
     const photoUrl = photoRef
-      ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${photoRef}&key=${GOOGLE_API_KEY}`
+      ? `/api/place-photo?ref=${encodeURIComponent(photoRef)}`
       : null;
 
     const result = {
@@ -1276,6 +1276,37 @@ app.get('/api/places/resolve', async (req, res) => {
   } catch (err) {
     console.error('places/resolve error:', err.message);
     res.status(500).json({ error: 'Internal server error resolving place' });
+  }
+});
+
+// ── Route: Proxy Google Places photos (avoids exposing API key to browser) ──
+app.get('/api/place-photo', async (req, res) => {
+  const { ref } = req.query;
+  if (!ref) return res.status(400).send('ref is required');
+
+  const cacheKey = `place-photo:${ref}`;
+  const cached = getCached(cacheKey);
+  if (cached) {
+    res.set('Content-Type', cached.contentType);
+    res.set('Cache-Control', 'public, max-age=604800');
+    return res.send(cached.buffer);
+  }
+
+  try {
+    const url = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photo_reference=${encodeURIComponent(ref)}&key=${GOOGLE_API_KEY}`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!resp.ok) return res.status(resp.status).send('Photo fetch failed');
+
+    const contentType = resp.headers.get('content-type') || 'image/jpeg';
+    const buffer = Buffer.from(await resp.arrayBuffer());
+
+    setCache(cacheKey, { contentType, buffer }, TTL.IATA); // 7 days
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'public, max-age=604800');
+    res.send(buffer);
+  } catch (err) {
+    console.error('place-photo proxy error:', err.message);
+    res.status(502).send('Photo proxy error');
   }
 });
 

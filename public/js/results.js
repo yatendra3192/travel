@@ -528,7 +528,7 @@ const Results = {
       if (abortSignal.aborted) { this._generating = false; overlay.style.display = 'none'; return; }
       Components.updateLoadingStep(5, 'done');
 
-      // Step 6: Resolve Google Places for AI-suggested activities
+      // Step 6: Resolve Google Places for AI-suggested activities (client-side)
       Components.updateLoadingStep(6, 'active');
       const placeData = {};
       if (aiResult.days && aiResult.days.length > 0) {
@@ -541,11 +541,41 @@ const Results = {
               Utils.fuzzyMatchCity(c.name, city)
             );
             placePromises.push(
-              Api.resolvePlace(act.name, city, cityObj?.lat, cityObj?.lng)
-                .then(result => {
-                  if (result) placeData[`${act.name}:${city}`] = result;
-                })
-                .catch(() => {})
+              (async () => {
+                try {
+                  // Try client-side Google Places searchByText first
+                  const { places } = await google.maps.places.Place.searchByText({
+                    textQuery: `${act.name} ${city}`,
+                    fields: ['location', 'rating', 'photos', 'displayName', 'types', 'id'],
+                    maxResultCount: 1,
+                    ...(cityObj?.lat && cityObj?.lng ? {
+                      locationBias: { lat: cityObj.lat, lng: cityObj.lng, radius: 10000 },
+                    } : {}),
+                  });
+                  const p = places?.[0];
+                  if (p) {
+                    let photoUrl = null;
+                    if (p.photos && p.photos.length > 0) {
+                      photoUrl = p.photos[0].getURI({ maxWidth: 800 });
+                    }
+                    placeData[`${act.name}:${city}`] = {
+                      placeId: p.id || null,
+                      name: p.displayName || act.name,
+                      lat: p.location?.lat() ?? null,
+                      lng: p.location?.lng() ?? null,
+                      rating: p.rating || null,
+                      photoUrl,
+                      types: p.types || [],
+                    };
+                  }
+                } catch {
+                  // Fallback to server-side resolve
+                  try {
+                    const result = await Api.resolvePlace(act.name, city, cityObj?.lat, cityObj?.lng);
+                    if (result) placeData[`${act.name}:${city}`] = result;
+                  } catch {}
+                }
+              })()
             );
           }
         }
